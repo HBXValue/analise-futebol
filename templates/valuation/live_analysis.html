@@ -1,0 +1,586 @@
+{% extends "valuation/base.html" %}
+{% block title %}Analise ao vivo | HBX{% endblock %}
+{% block body %}
+<section class="live-shell live-redesign">
+    {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+                <div class="message {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div class="live-topbar">
+        <div class="hero-card" style="margin: 0; flex: 1;">
+            <span class="pill">Analise ao vivo</span>
+            <h1 style="margin: 12px 0 8px;">Registro de desempenho individual em jogo</h1>
+            <p>Ficha unica para registrar a partida por blocos, com prioridade para clique rapido, leitura clara e minimo de digitacao.</p>
+            <div class="actions">
+                <a class="button button-secondary" href="{% url 'dashboard' %}?lang={{ lang }}">Dashboard</a>
+                <button class="button button-secondary" type="button" id="new-sheet-button">Iniciar nova ficha</button>
+            </div>
+        </div>
+
+        <div class="panel live-control-panel">
+            <div class="field-group">
+                <label for="player-autofill">Atleta cadastrado</label>
+                <select id="player-autofill" class="field-input">
+                    <option value="">Selecionar para preencher</option>
+                    {% for player in player_autofill %}
+                        <option
+                            value="{{ player.id }}"
+                            data-name="{{ player.name }}"
+                            data-position-group="{{ player.position_group }}"
+                            data-team="{{ player.team }}"
+                            {% if selected_player and selected_player.id == player.id %}selected{% endif %}
+                        >
+                            {{ player.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field-group">
+                <label for="saved-report-select">Fichas salvas</label>
+                <select id="saved-report-select" class="field-input">
+                    <option value="">Nova ficha</option>
+                    {% for report in reports %}
+                        <option value="{{ report.id }}" {% if selected_report and selected_report.id == report.id %}selected{% endif %}>
+                            {{ report.match_date|date:"d/m/Y" }} | {{ report.athlete_name }} | {{ report.position }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if selected_report %}
+                <div class="live-statline" style="margin-top: 12px;">
+                    <div class="stat-card">
+                        <span>Ultimo salvamento</span>
+                        <strong>{{ selected_report.saved_at|date:"d/m H:i" }}</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span>Origem fisica</span>
+                        <strong>{{ selected_report.physical_data_source|title }}</strong>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'live-analysis-session' %}" id="live-evaluation-form">
+        {% csrf_token %}
+        <input type="hidden" name="report_id" id="report-id" value="{% if selected_report %}{{ selected_report.id }}{% endif %}">
+        <input type="hidden" name="payload_json" id="payload-json">
+
+        <div class="live-layout">
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 1</h2>
+                <h3>Informacoes gerais</h3>
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label for="nome-atleta">Nome do atleta</label>
+                        <input id="nome-atleta" class="field-input" type="text">
+                    </div>
+                    <div class="field-group">
+                        <label for="numero-camisa">Numero da camisa</label>
+                        <input id="numero-camisa" class="field-input" type="number" min="0">
+                    </div>
+                    <div class="field-group">
+                        <label for="posicao-atleta">Posicao</label>
+                        <select id="posicao-atleta" class="field-input">
+                            <option value="">Selecionar</option>
+                            {% for option in position_options %}
+                                <option value="{{ option }}">{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label for="equipe-atleta">Equipe</label>
+                        <input id="equipe-atleta" class="field-input" type="text">
+                    </div>
+                    <div class="field-group">
+                        <label for="adversario-atleta">Adversario</label>
+                        <input id="adversario-atleta" class="field-input" type="text">
+                    </div>
+                    <div class="field-group">
+                        <label for="competicao-atleta">Competicao</label>
+                        <input id="competicao-atleta" class="field-input" type="text">
+                    </div>
+                    <div class="field-group">
+                        <label for="data-avaliacao">Data</label>
+                        <input id="data-avaliacao" class="field-input" type="date">
+                    </div>
+                    <div class="field-group">
+                        <label for="analista-responsavel">Analista responsavel</label>
+                        <input id="analista-responsavel" class="field-input" type="text">
+                    </div>
+                    <div class="field-group">
+                        <label for="minutos-jogados">Minutos jogados</label>
+                        <input id="minutos-jogados" class="field-input" type="number" min="0" max="130">
+                    </div>
+                    <div class="field-group" style="grid-column: 1 / -1;">
+                        <label for="observacao-inicial">Observacao inicial</label>
+                        <textarea id="observacao-inicial" class="field-input" rows="3"></textarea>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 2</h2>
+                <h3>Indicadores tecnicos</h3>
+                <div class="counter-grid" id="technical-grid">
+                    {% for indicator in technical_indicators %}
+                        <div class="counter-card" data-block="indicadores_tecnicos" data-label="{{ indicator }}">
+                            <span>{{ indicator }}</span>
+                            <div class="counter-controls">
+                                <button type="button" class="counter-button decrement">-</button>
+                                <strong class="counter-value">0</strong>
+                                <button type="button" class="counter-button increment">+</button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 3</h2>
+                <h3>Indicadores defensivos</h3>
+                <div class="counter-grid" id="defensive-grid">
+                    {% for indicator in defensive_indicators %}
+                        <div class="counter-card" data-block="indicadores_defensivos" data-label="{{ indicator }}">
+                            <span>{{ indicator }}</span>
+                            <div class="counter-controls">
+                                <button type="button" class="counter-button decrement">-</button>
+                                <strong class="counter-value">0</strong>
+                                <button type="button" class="counter-button increment">+</button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 4</h2>
+                <h3>Indicadores taticos</h3>
+                <div class="rating-grid" id="tactical-grid">
+                    {% for indicator in tactical_indicators %}
+                        <div class="rating-card" data-block="indicadores_taticos" data-label="{{ indicator }}">
+                            <span>{{ indicator }}</span>
+                            <div class="rating-options">
+                                {% for score in "12345" %}
+                                    <button type="button" class="rating-button" data-score="{{ score }}">{{ score }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 5</h2>
+                <h3>Indicadores fisicos</h3>
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label for="physical-source">Fonte do dado</label>
+                        <select id="physical-source" class="field-input">
+                            <option value="manual">Manual</option>
+                            <option value="arquivo">GPS/arquivo</option>
+                        </select>
+                    </div>
+                    <div class="field-group" style="grid-column: 1 / -1;">
+                        <label for="physical-file">Importar dados fisicos</label>
+                        <input id="physical-file" class="field-input" type="file" accept=".csv,.json">
+                        <small id="physical-file-status" style="color: var(--muted);">Aceita CSV e JSON nesta versao.</small>
+                    </div>
+                </div>
+                <div class="form-grid" id="physical-grid" style="margin-top: 16px;">
+                    {% for indicator in physical_indicators %}
+                        <div class="field-group" data-physical-label="{{ indicator }}">
+                            <label>{{ indicator }}</label>
+                            <input class="field-input physical-input" type="text">
+                        </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 6</h2>
+                <h3>Indicadores psicologicos</h3>
+                <div class="rating-grid" id="psychological-grid">
+                    {% for indicator in psychological_indicators %}
+                        <div class="rating-card" data-block="indicadores_psicologicos" data-label="{{ indicator }}">
+                            <span>{{ indicator }}</span>
+                            <div class="rating-options">
+                                {% for score in "12345" %}
+                                    <button type="button" class="rating-button" data-score="{{ score }}">{{ score }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 7</h2>
+                <h3>Indicadores especificos por posicao</h3>
+                <p id="position-helper" style="margin-top: 0;">Selecione a posicao para carregar os indicadores especificos.</p>
+                <div class="counter-grid" id="position-grid"></div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 8</h2>
+                <h3>Avaliacao geral</h3>
+                <div class="form-grid">
+                    <div class="field-group" style="grid-column: 1 / -1;">
+                        <label for="resumo-desempenho">Resumo do desempenho</label>
+                        <textarea id="resumo-desempenho" class="field-input" rows="4"></textarea>
+                    </div>
+                    <div class="field-group">
+                        <label for="pontos-fortes">Pontos fortes</label>
+                        <textarea id="pontos-fortes" class="field-input" rows="4"></textarea>
+                    </div>
+                    <div class="field-group">
+                        <label for="pontos-melhorar">Pontos a melhorar</label>
+                        <textarea id="pontos-melhorar" class="field-input" rows="4"></textarea>
+                    </div>
+                    <div class="field-group" style="grid-column: 1 / -1;">
+                        <label for="observacoes-finais">Observacoes finais</label>
+                        <textarea id="observacoes-finais" class="field-input" rows="4"></textarea>
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel section-panel">
+                <h2 class="section-title">Bloco 9</h2>
+                <h3>Acoes do sistema</h3>
+                <div class="live-statline" style="margin-top: 0;">
+                    <div class="stat-card">
+                        <span>Modo fisico</span>
+                        <strong id="physical-source-readout">Manual</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span>Posicao ativa</span>
+                        <strong id="position-readout">-</strong>
+                    </div>
+                    <div class="stat-card">
+                        <span>Status da ficha</span>
+                        <strong id="sheet-status">{% if selected_report %}Edicao{% else %}Nova{% endif %}</strong>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button class="button button-primary" type="submit">Salvar avaliacao</button>
+                    <button class="button button-secondary" type="button" id="clear-sheet-button">Limpar ficha</button>
+                    <button class="button button-secondary" type="button" id="load-current-player-button">Preencher com atleta selecionado</button>
+                </div>
+            </article>
+        </div>
+    </form>
+</section>
+
+<script>
+    const INITIAL_PAYLOAD = {{ payload_json|safe }};
+    const BLANK_PAYLOAD = {{ blank_payload_json|safe }};
+    const POSITION_SPECIFIC = {{ position_specific_indicators|safe }};
+    let state = JSON.parse(JSON.stringify(INITIAL_PAYLOAD));
+
+    function counterValue(block, label) {
+        return Number(state[block]?.[label] || 0);
+    }
+
+    function setCounterValue(block, label, value) {
+        if (!state[block]) state[block] = {};
+        state[block][label] = Math.max(0, Number(value) || 0);
+    }
+
+    function setRatingValue(block, label, value) {
+        if (!state[block]) state[block] = {};
+        state[block][label] = value;
+    }
+
+    function syncGeneralInputs() {
+        document.getElementById("nome-atleta").value = state.informacoes_gerais.nome_atleta || "";
+        document.getElementById("numero-camisa").value = state.informacoes_gerais.numero_camisa || "";
+        document.getElementById("posicao-atleta").value = state.informacoes_gerais.posicao || "";
+        document.getElementById("equipe-atleta").value = state.informacoes_gerais.equipe || "";
+        document.getElementById("adversario-atleta").value = state.informacoes_gerais.adversario || "";
+        document.getElementById("competicao-atleta").value = state.informacoes_gerais.competicao || "";
+        document.getElementById("data-avaliacao").value = state.informacoes_gerais.data || "";
+        document.getElementById("analista-responsavel").value = state.informacoes_gerais.analista_responsavel || "";
+        document.getElementById("minutos-jogados").value = state.informacoes_gerais.minutos_jogados || "";
+        document.getElementById("observacao-inicial").value = state.informacoes_gerais.observacao_inicial || "";
+    }
+
+    function syncCounterCards() {
+        document.querySelectorAll(".counter-card[data-block]").forEach((card) => {
+            const block = card.dataset.block;
+            const label = card.dataset.label;
+            const value = block === "indicadores_especificos_posicao"
+                ? Number(state.indicadores_especificos_posicao.valores?.[label] || 0)
+                : counterValue(block, label);
+            card.querySelector(".counter-value").textContent = value;
+        });
+    }
+
+    function syncRatings() {
+        document.querySelectorAll(".rating-card").forEach((card) => {
+            const block = card.dataset.block;
+            const label = card.dataset.label;
+            const activeScore = Number(state[block]?.[label] || 0);
+            card.querySelectorAll(".rating-button").forEach((button) => {
+                button.classList.toggle("active", Number(button.dataset.score) === activeScore);
+            });
+        });
+    }
+
+    function syncPhysicalInputs() {
+        document.getElementById("physical-source").value = state.indicadores_fisicos.fonte || "manual";
+        document.getElementById("physical-source-readout").textContent = state.indicadores_fisicos.fonte === "arquivo" ? "GPS/arquivo" : "Manual";
+        document.querySelectorAll("[data-physical-label]").forEach((wrapper) => {
+            const label = wrapper.dataset.physicalLabel;
+            const input = wrapper.querySelector("input");
+            input.value = state.indicadores_fisicos.valores?.[label] || "";
+            input.readOnly = state.indicadores_fisicos.fonte === "arquivo";
+        });
+        const fileStatus = document.getElementById("physical-file-status");
+        fileStatus.textContent = state.indicadores_fisicos.arquivo_nome
+            ? `Arquivo carregado: ${state.indicadores_fisicos.arquivo_nome}`
+            : "Aceita CSV e JSON nesta versao.";
+    }
+
+    function syncTextAreas() {
+        document.getElementById("resumo-desempenho").value = state.avaliacao_geral.resumo_do_desempenho || "";
+        document.getElementById("pontos-fortes").value = state.avaliacao_geral.pontos_fortes || "";
+        document.getElementById("pontos-melhorar").value = state.avaliacao_geral.pontos_a_melhorar || "";
+        document.getElementById("observacoes-finais").value = state.avaliacao_geral.observacoes_finais || "";
+    }
+
+    function ensurePositionState(position) {
+        const indicators = POSITION_SPECIFIC[position] || [];
+        state.indicadores_especificos_posicao.grupo_posicao = position;
+        const nextValues = {};
+        indicators.forEach((label) => {
+            nextValues[label] = Number(state.indicadores_especificos_posicao.valores?.[label] || 0);
+        });
+        state.indicadores_especificos_posicao.valores = nextValues;
+    }
+
+    function renderPositionCounters() {
+        const grid = document.getElementById("position-grid");
+        const helper = document.getElementById("position-helper");
+        const activePosition = state.indicadores_especificos_posicao.grupo_posicao || "";
+        document.getElementById("position-readout").textContent = activePosition || "-";
+        grid.innerHTML = "";
+        const indicators = POSITION_SPECIFIC[activePosition] || [];
+        if (!indicators.length) {
+            helper.textContent = "Selecione a posicao para carregar os indicadores especificos.";
+            return;
+        }
+        helper.textContent = `Indicadores carregados para ${activePosition}.`;
+        indicators.forEach((label) => {
+            const card = document.createElement("div");
+            card.className = "counter-card";
+            card.dataset.block = "indicadores_especificos_posicao";
+            card.dataset.label = label;
+            card.innerHTML = `
+                <span>${label}</span>
+                <div class="counter-controls">
+                    <button type="button" class="counter-button decrement">-</button>
+                    <strong class="counter-value">${Number(state.indicadores_especificos_posicao.valores?.[label] || 0)}</strong>
+                    <button type="button" class="counter-button increment">+</button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function syncAll() {
+        syncGeneralInputs();
+        syncCounterCards();
+        syncRatings();
+        syncPhysicalInputs();
+        syncTextAreas();
+        renderPositionCounters();
+        syncCounterCards();
+    }
+
+    function blankPayload() {
+        return JSON.parse(JSON.stringify(BLANK_PAYLOAD));
+    }
+
+    function applySelectedPlayer() {
+        const select = document.getElementById("player-autofill");
+        const selected = select.options[select.selectedIndex];
+        if (!selected || !selected.value) return;
+        state.informacoes_gerais.player_id = selected.value;
+        state.informacoes_gerais.nome_atleta = selected.dataset.name || "";
+        state.informacoes_gerais.posicao = selected.dataset.positionGroup || "";
+        state.informacoes_gerais.equipe = selected.dataset.team || "";
+        const mappedPosition = document.getElementById("posicao-atleta").value || selected.dataset.positionGroup || "";
+        if (POSITION_SPECIFIC[mappedPosition]) {
+            state.informacoes_gerais.posicao = mappedPosition;
+        }
+        const position = POSITION_SPECIFIC[state.informacoes_gerais.posicao] ? state.informacoes_gerais.posicao : "";
+        ensurePositionState(position);
+        syncAll();
+    }
+
+    function bindGeneralInputs() {
+        const mappings = [
+            ["nome-atleta", "nome_atleta"],
+            ["numero-camisa", "numero_camisa"],
+            ["posicao-atleta", "posicao"],
+            ["equipe-atleta", "equipe"],
+            ["adversario-atleta", "adversario"],
+            ["competicao-atleta", "competicao"],
+            ["data-avaliacao", "data"],
+            ["analista-responsavel", "analista_responsavel"],
+            ["minutos-jogados", "minutos_jogados"],
+            ["observacao-inicial", "observacao_inicial"],
+        ];
+        mappings.forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("input", (event) => {
+                state.informacoes_gerais[key] = event.target.value;
+                if (key === "posicao") {
+                    ensurePositionState(event.target.value);
+                    renderPositionCounters();
+                    syncCounterCards();
+                }
+            });
+        });
+    }
+
+    function bindCounters() {
+        document.addEventListener("click", (event) => {
+            const button = event.target.closest(".counter-button");
+            if (!button) return;
+            const card = button.closest(".counter-card");
+            const block = card.dataset.block;
+            const label = card.dataset.label;
+            if (block === "indicadores_especificos_posicao") {
+                const current = Number(state.indicadores_especificos_posicao.valores?.[label] || 0);
+                state.indicadores_especificos_posicao.valores[label] = button.classList.contains("increment")
+                    ? current + 1
+                    : Math.max(0, current - 1);
+            } else {
+                const current = counterValue(block, label);
+                setCounterValue(block, label, button.classList.contains("increment") ? current + 1 : current - 1);
+            }
+            syncCounterCards();
+        });
+    }
+
+    function bindRatings() {
+        document.querySelectorAll(".rating-card .rating-button").forEach((button) => {
+            button.addEventListener("click", () => {
+                const card = button.closest(".rating-card");
+                setRatingValue(card.dataset.block, card.dataset.label, Number(button.dataset.score));
+                syncRatings();
+            });
+        });
+    }
+
+    function bindPhysicalInputs() {
+        document.getElementById("physical-source").addEventListener("change", (event) => {
+            state.indicadores_fisicos.fonte = event.target.value;
+            state.metadados.origem_dados_fisicos = event.target.value;
+            if (event.target.value === "manual") {
+                state.indicadores_fisicos.arquivo_nome = "";
+            }
+            syncPhysicalInputs();
+        });
+        document.querySelectorAll("[data-physical-label] input").forEach((input) => {
+            input.addEventListener("input", (event) => {
+                const label = event.target.closest("[data-physical-label]").dataset.physicalLabel;
+                state.indicadores_fisicos.valores[label] = event.target.value;
+            });
+        });
+        document.getElementById("physical-file").addEventListener("change", async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const content = await file.text();
+            state.indicadores_fisicos.fonte = "arquivo";
+            state.metadados.origem_dados_fisicos = "arquivo";
+            state.indicadores_fisicos.arquivo_nome = file.name;
+            let imported = {};
+            if (file.name.toLowerCase().endsWith(".json")) {
+                try {
+                    imported = JSON.parse(content);
+                } catch (error) {
+                    document.getElementById("physical-file-status").textContent = "Falha ao ler o JSON.";
+                    return;
+                }
+            } else {
+                imported = {};
+                const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+                if (lines.length >= 2 && lines[0].includes(",")) {
+                    const headers = lines[0].split(",").map((item) => item.trim());
+                    const values = lines[1].split(",").map((item) => item.trim());
+                    headers.forEach((header, index) => {
+                        imported[header] = values[index] || "";
+                    });
+                } else {
+                    lines.forEach((line) => {
+                        const parts = line.split(",");
+                        if (parts.length >= 2) {
+                            imported[parts[0].trim()] = parts.slice(1).join(",").trim();
+                        }
+                    });
+                }
+            }
+            document.querySelectorAll("[data-physical-label]").forEach((wrapper) => {
+                const label = wrapper.dataset.physicalLabel;
+                state.indicadores_fisicos.valores[label] = imported[label] || imported[label.toLowerCase()] || state.indicadores_fisicos.valores[label] || "";
+            });
+            syncPhysicalInputs();
+        });
+    }
+
+    function bindTextAreas() {
+        const textMappings = [
+            ["resumo-desempenho", "resumo_do_desempenho"],
+            ["pontos-fortes", "pontos_fortes"],
+            ["pontos-melhorar", "pontos_a_melhorar"],
+            ["observacoes-finais", "observacoes_finais"],
+        ];
+        textMappings.forEach(([id, key]) => {
+            document.getElementById(id).addEventListener("input", (event) => {
+                state.avaliacao_geral[key] = event.target.value;
+            });
+        });
+    }
+
+    function bindTopControls() {
+        document.getElementById("player-autofill").addEventListener("change", applySelectedPlayer);
+        document.getElementById("saved-report-select").addEventListener("change", (event) => {
+            if (!event.target.value) {
+                window.location.href = "{% url 'live-analysis' %}?lang={{ lang }}";
+                return;
+            }
+            window.location.href = "{% url 'live-analysis' %}?report=" + event.target.value + "&lang={{ lang }}";
+        });
+        document.getElementById("clear-sheet-button").addEventListener("click", () => {
+            state = blankPayload();
+            document.getElementById("report-id").value = "";
+            document.getElementById("sheet-status").textContent = "Nova";
+            syncAll();
+        });
+        document.getElementById("new-sheet-button").addEventListener("click", () => {
+            window.location.href = "{% url 'live-analysis' %}?lang={{ lang }}";
+        });
+        document.getElementById("load-current-player-button").addEventListener("click", applySelectedPlayer);
+    }
+
+    document.getElementById("live-evaluation-form").addEventListener("submit", (event) => {
+        state.metadados.origem_dados_fisicos = state.indicadores_fisicos.fonte;
+        state.indicadores_especificos_posicao.grupo_posicao = state.informacoes_gerais.posicao;
+        document.getElementById("payload-json").value = JSON.stringify(state);
+    });
+
+    bindGeneralInputs();
+    bindCounters();
+    bindRatings();
+    bindPhysicalInputs();
+    bindTextAreas();
+    bindTopControls();
+    ensurePositionState(state.informacoes_gerais.posicao || state.indicadores_especificos_posicao.grupo_posicao || "");
+    syncAll();
+</script>
+{% endblock %}

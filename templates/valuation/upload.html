@@ -1,0 +1,54 @@
+{% extends "valuation/base.html" %}
+{% block title %}{{ t.upload_csv }} | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>{{ t.valuation_system }}</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}">{{ t.dashboard }}</a>
+            <a href="{% url 'player-create' %}">{{ t.add_player }}</a>
+            <a class="active" href="{% url 'player-upload' %}">{{ t.upload_csv }}</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
+        <section class="hero-card">
+            <span class="pill">{{ t.bulk_workflow }}</span>
+            <h1>{{ t.upload_player_data_via_csv }}</h1>
+            <p>{{ t.upload_text }}</p>
+            <div class="actions">
+                <a class="button button-primary" href="{% url 'player-template' %}">{{ t.download_template }}</a>
+                <a class="button button-secondary" href="{% url 'dashboard' %}">{{ t.back_to_dashboard }}</a>
+            </div>
+        </section>
+        <section class="panel">
+            <h2>{{ t.csv_upload_title }}</h2>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="field-group">
+                    <label for="{{ form.csv_file.id_for_label }}">{{ t.csv_file }}</label>
+                    {{ form.csv_file }}
+                </div>
+                <div class="actions">
+                    <button class="button button-primary" type="submit">{{ t.import_players }}</button>
+                </div>
+            </form>
+        </section>
+        <section class="grid chart-grid">
+            <article class="panel">
+                <h2>{{ t.accepted_inputs }}</h2>
+                <p>{{ t.accepted_inputs_text }}</p>
+            </article>
+            <article class="panel">
+                <h2>{{ t.future_api_connectors }}</h2>
+                <p>{{ t.future_api_connectors_text }}</p>
+            </article>
+        </section>
+    </main>
+</div>
+{% endblock %}

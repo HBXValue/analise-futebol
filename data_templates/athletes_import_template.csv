@@ -1,0 +1,2 @@
+full_name,sport_name,nationality_code,primary_position,secondary_positions,dominant_foot,birth_date,height_cm,weight_kg,current_club_name,club_country_code,club_division_level,status,notes,history_start_date,history_end_date,history_shirt_number,history_is_current,history_notes
+Jogador Exemplo,Exemplo,BRA,Atacante,Ponta direita,right,2000-01-15,180,75,Flamengo,BRA,1,active,,2025-01-01,,9,true,

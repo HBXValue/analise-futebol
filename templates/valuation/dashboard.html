@@ -1,0 +1,414 @@
+{% extends "valuation/base.html" %}
+{% block title %}{{ t.dashboard }} | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>{{ t.valuation_system }}</small></div>
+        <div class="nav">
+            <a class="active" href="{% url 'dashboard' %}">{{ t.dashboard }}</a>
+            <a href="{% url 'player-create' %}">{{ t.add_player }}</a>
+            <a href="{% url 'player-upload' %}">{{ t.upload_csv }}</a>
+            <a href="{% url 'player-template' %}">{{ t.download_template }}</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">{{ t.live_analysis_mode }}</a>
+            <a href="/admin/">{{ t.admin }}</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+        <div class="meta">
+            <strong>{{ current_user.email }}</strong>
+            <span style="color: var(--muted);">{{ t.private_workspace }}</span>
+        </div>
+        <div class="meta">
+            <strong>{{ t.api_ready }}</strong>
+            <p>{{ t.api_ready_text }}</p>
+        </div>
+    </aside>
+    <main class="content">
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        <section class="hero-card">
+            <span class="pill">{{ t.platform_tag }}</span>
+            <h1>{{ t.hero_title }}</h1>
+            <p>{{ t.hero_text }}</p>
+            <div class="actions">
+                <a class="button button-primary" href="{% url 'player-create' %}">{{ t.input_new_player }}</a>
+                <a class="button button-secondary" href="{% url 'player-upload' %}">{{ t.bulk_import }}</a>
+                <a class="button button-secondary" href="{% url 'live-analysis' %}?lang={{ lang }}">{{ t.start_live_analysis }}</a>
+            </div>
+        </section>
+
+        {% if featured_player %}
+            {% for item in players_payload %}
+                {% if item.player.id == featured_player.id %}
+                    <section class="grid stats-grid">
+                        <article class="stat-card">
+                            <span>{{ t.featured_player }}</span>
+                            <strong>{{ item.player.name }}</strong>
+                            <div>{{ item.player.position }} | {{ item.player.club_origin }}</div>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.valuation_score }}</span>
+                            <strong>{{ item.scores.valuation_score }}</strong>
+                            <div class="badge">{{ item.scores.growth_potential_label }}</div>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.current_value }}</span>
+                            <strong>EUR {{ item.player.current_value }}</strong>
+                            <div>{{ item.player.league_level }}</div>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.projected_value }}</span>
+                            <strong>EUR {{ item.scores.projected_value }}</strong>
+                            <div>{{ item.percentile }} {{ t.percentile_in_position }} {{ item.player.position }}</div>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.growth_rate }}</span>
+                            <strong>{{ item.growth_rate }}%</strong>
+                            <div>{{ t.player_evolution }}</div>
+                        </article>
+                    </section>
+                {% endif %}
+            {% endfor %}
+
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.radar_chart }}</h2>
+                    <div id="radar-chart" style="height: 340px;"></div>
+                </article>
+                <article class="panel">
+                    <h2>{{ t.value_evolution_graph }}</h2>
+                    <div id="growth-chart" style="height: 340px;"></div>
+                </article>
+            </section>
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.player_evolution }}</h2>
+                    <form method="get">
+                        {% for player_id in comparison_form.compare.value %}
+                            <input type="hidden" name="compare" value="{{ player_id }}">
+                        {% endfor %}
+                        <div class="field-group">
+                            <label for="projection_period">{{ t.projection_period }}</label>
+                            <select id="projection_period" name="projection_period" class="field-input">
+                                {% for period in projection_periods %}
+                                    <option value="{{ period }}" {% if projection_period == period %}selected{% endif %}>
+                                        {% if period == "3" %}{{ t.months_3 }}{% elif period == "6" %}{{ t.months_6 }}{% elif period == "12" %}{{ t.months_12 }}{% else %}{{ t.months_24 }}{% endif %}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.apply_projection }}</button>
+                        </div>
+                    </form>
+                    <div id="evolution-chart" style="height: 340px; margin-top: 20px;"></div>
+                </article>
+                <article class="panel">
+                    <h2>{{ t.pillar_trend }}</h2>
+                    <div id="pillar-trend-chart" style="height: 340px;"></div>
+                </article>
+            </section>
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.action_plan }}</h2>
+                    <form method="post" action="{% url 'player-plan' featured_player.id %}">
+                        {% csrf_token %}
+                        <div class="form-grid">
+                            {% for field in development_plan_form %}
+                                <div class="field-group">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.save_plan }}</button>
+                        </div>
+                    </form>
+                    <table class="player-table">
+                        <tbody>
+                        {% for plan in featured_player.development_plans.all|slice:":4" %}
+                            <tr>
+                                <td>
+                                    <strong>{{ plan.goal }}</strong><br>
+                                    <span style="color: var(--muted);">{{ plan.target_metric }} -> {{ plan.target_value }} | {{ t.deadline }}: {{ plan.deadline|date:"d/m/Y" }}</span>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td>{{ t.no_plans }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </article>
+            </section>
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.evolution_followup }}</h2>
+                    <form method="post" action="{% url 'player-progress' featured_player.id %}">
+                        {% csrf_token %}
+                        <div class="form-grid">
+                            {% for field in progress_tracking_form %}
+                                <div class="field-group">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.save_progress }}</button>
+                        </div>
+                    </form>
+                    <div class="progress-stack">
+                        {% for item in featured_player.progress_tracking.all|slice:":5" %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ item.metric }}</div>
+                                    <div class="progress-values">
+                                        <span>{{ t.current_value }}: {{ item.current_value }}</span>
+                                        <span>{{ t.target_value }}: {{ item.target_value }}</span>
+                                        <span>{{ t.progress }}: {{ item.progress_pct }}%</span>
+                                    </div>
+                                </div>
+                                <div class="progress-rail">
+                                    <div class="progress-bar target" style="left: 0; width: {{ item.progress_pct }}%;"></div>
+                                </div>
+                            </article>
+                        {% empty %}
+                            <article class="progress-card">{{ t.no_progress }}</article>
+                        {% endfor %}
+                    </div>
+                </article>
+            </section>
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.effort_uplift }}</h2>
+                    <p>{{ t.uplift_hint }}</p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_name" value="uplift">
+                        <div class="form-grid">
+                            {% for field in uplift_form %}
+                                <div class="field-group">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.simulate_uplift }}</button>
+                        </div>
+                    </form>
+                </article>
+                {% if uplift_result %}
+                <article class="panel">
+                    <h2>{{ t.estimated_outcome }}</h2>
+                    <table class="player-table">
+                        <thead>
+                        <tr>
+                            <th>{{ t.metric }}</th>
+                            <th>{{ t.current_level }}</th>
+                            <th>{{ t.increase_percent }}</th>
+                            <th>{{ t.target_goal }}</th>
+                            <th>{{ t.delta }}</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in uplift_result.metric_rows %}
+                            <tr>
+                                <td>{{ row.label }}</td>
+                                <td>{{ row.current }}</td>
+                                <td>{{ row.increase_pct }}%</td>
+                                <td>{{ row.target }}</td>
+                                <td>{{ row.delta }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="progress-stack">
+                        {% for row in uplift_result.metric_rows %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ row.label }}</div>
+                                    <div class="progress-values">
+                                        <span>{{ t.current_level }}: {{ row.current }}</span>
+                                        <span>{{ t.increase_percent }}: {{ row.increase_pct }}%</span>
+                                        <span>{{ t.target_goal }}: {{ row.target }}</span>
+                                        <span>{{ t.elite_target }}: {{ row.elite }}</span>
+                                        <span>{{ t.gap_to_elite }}: {{ row.gap_to_elite }}</span>
+                                    </div>
+                                </div>
+                                <div class="progress-rail">
+                                    <div class="progress-bar current" style="left: 0; width: {{ row.current_pct }}%;"></div>
+                                    <div class="progress-bar target" style="left: 0; width: {{ row.target_pct }}%;"></div>
+                                    <div class="progress-marker elite" style="left: calc({{ row.elite_pct }}% - 2px);"></div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                    <div class="grid stats-grid" style="margin-top: 18px;">
+                        <article class="stat-card">
+                            <span>{{ t.performance_jump }}</span>
+                            <strong>{{ uplift_result.performance_jump }}</strong>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.projected_value }}</span>
+                            <strong>EUR {{ uplift_result.target_scores.projected_value }}</strong>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.growth_rate }}</span>
+                            <strong>{{ uplift_result.value_delta_pct }}%</strong>
+                        </article>
+                        <article class="stat-card">
+                            <span>{{ t.club_attractiveness }}</span>
+                            <strong>{{ uplift_result.club_attractiveness }}</strong>
+                        </article>
+                    </div>
+                </article>
+                {% endif %}
+            </section>
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.simulation_snapshot }}</h2>
+                    <p>{{ t.use_blank_scores }}</p>
+                    <form method="post" action="{% url 'player-snapshot' featured_player.id %}">
+                        {% csrf_token %}
+                        <div class="form-grid">
+                            {% for field in snapshot_form %}
+                                <div class="field-group">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.save_snapshot }}</button>
+                        </div>
+                    </form>
+                </article>
+            </section>
+            {% if growth_insights %}
+                <section class="grid chart-grid">
+                    <article class="panel">
+                        <h2>{{ t.growth_insights }}</h2>
+                        <p>{{ projected_growth_text }}</p>
+                        <p>{{ main_driver_text }}</p>
+                    </article>
+                    <article class="panel">
+                        <h2>{{ t.scenario_simulation }}</h2>
+                        <table class="player-table">
+                            <thead>
+                            <tr>
+                                <th>{{ t.projection_period }}</th>
+                                <th>{{ t.projected_value }}</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr><td>{{ t.conservative }}</td><td>EUR {{ growth_insights.scenarios.conservative }}</td></tr>
+                            <tr><td>{{ t.expected }}</td><td>EUR {{ growth_insights.scenarios.expected }}</td></tr>
+                            <tr><td>{{ t.aggressive }}</td><td>EUR {{ growth_insights.scenarios.aggressive }}</td></tr>
+                            </tbody>
+                        </table>
+                    </article>
+                </section>
+            {% endif %}
+        {% else %}
+            <section class="panel">
+                <h2>{{ t.no_players_yet }}</h2>
+                <p>{{ t.no_players_text }}</p>
+            </section>
+        {% endif %}
+
+        <section class="grid chart-grid">
+            <article class="panel">
+                <h2>{{ t.player_comparison }}</h2>
+                <form method="get">
+                    <div class="field-group">
+                        <label for="{{ comparison_form.compare.id_for_label }}">{{ t.select_players_for_comparison }}</label>
+                        {{ comparison_form.compare }}
+                    </div>
+                    <div class="actions">
+                        <button class="button button-primary" type="submit">{{ t.compare }}</button>
+                    </div>
+                </form>
+                <div id="comparison-chart" style="height: 360px; margin-top: 20px;"></div>
+            </article>
+            <article class="panel">
+                <h2>{{ t.position_percentile_ranking }}</h2>
+                <div id="percentile-chart" style="height: 360px;"></div>
+            </article>
+        </section>
+
+        <section class="panel">
+            <h2>{{ t.managed_players }}</h2>
+            <table class="player-table">
+                <thead>
+                <tr>
+                    <th>{{ t.player }}</th>
+                    <th>{{ t.position }}</th>
+                    <th>{{ t.score }}</th>
+                    <th>{{ t.current_value }}</th>
+                    <th>{{ t.projected_value }}</th>
+                    <th>{{ t.report }}</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for item in players_payload %}
+                    <tr>
+                        <td>
+                            <strong>{{ item.player.name }}</strong><br>
+                            <span style="color: var(--muted);">{{ item.player.club_origin }}</span>
+                        </td>
+                        <td>{{ item.player.position }}</td>
+                        <td>{{ item.scores.valuation_score }}<br><span class="badge">{{ item.scores.growth_potential_label }}</span></td>
+                        <td>EUR {{ item.player.current_value }}</td>
+                        <td>EUR {{ item.scores.projected_value }}</td>
+                        <td>
+                            <a class="button button-secondary" href="{% url 'player-edit' item.player.id %}">{{ t.edit }}</a>
+                            <a class="button button-primary" href="{% url 'player-report' item.player.id %}">PDF</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6">{{ t.no_player_records }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+</div>
+<script>
+{% if radar_chart %}
+const radarPayload = {{ radar_chart|safe }};
+Plotly.newPlot("radar-chart", radarPayload.data, radarPayload.layout, {responsive: true, displayModeBar: false});
+
+const growthPayload = {{ growth_chart|safe }};
+Plotly.newPlot("growth-chart", growthPayload.data, growthPayload.layout, {responsive: true, displayModeBar: false});
+{% endif %}
+{% if comparison_chart %}
+const comparisonPayload = {{ comparison_chart|safe }};
+Plotly.newPlot("comparison-chart", comparisonPayload.data, comparisonPayload.layout, {responsive: true, displayModeBar: false});
+{% endif %}
+{% if percentile_chart %}
+const percentilePayload = {{ percentile_chart|safe }};
+Plotly.newPlot("percentile-chart", percentilePayload.data, percentilePayload.layout, {responsive: true, displayModeBar: false});
+{% endif %}
+{% if evolution_chart %}
+const evolutionPayload = {{ evolution_chart|safe }};
+Plotly.newPlot("evolution-chart", evolutionPayload.data, evolutionPayload.layout, {responsive: true, displayModeBar: false});
+{% endif %}
+{% if pillar_trend_chart %}
+const pillarTrendPayload = {{ pillar_trend_chart|safe }};
+Plotly.newPlot("pillar-trend-chart", pillarTrendPayload.data, pillarTrendPayload.layout, {responsive: true, displayModeBar: false});
+{% endif %}
+</script>
+{% endblock %}

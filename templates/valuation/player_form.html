@@ -1,0 +1,88 @@
+{% extends "valuation/base.html" %}
+{% block title %}{{ page_title }} | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>{{ t.valuation_system }}</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}">{{ t.dashboard }}</a>
+            <a class="active" href="{% url 'player-create' %}">{{ t.add_player }}</a>
+            <a href="{% url 'player-upload' %}">{{ t.upload_csv }}</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
+        <section class="hero-card">
+            <span class="pill">{{ t.manual_data_entry }}</span>
+            <h1>{{ page_title }}</h1>
+            <p>{{ t.hero_text }}</p>
+        </section>
+        <section class="panel">
+            <form method="post">
+                {% csrf_token %}
+                <h2 class="section-title">{{ t.player_profile }}</h2>
+                <div class="form-grid">
+                    {% for field in form %}
+                        {% if forloop.counter0 < 6 %}
+                            <div class="field-group">
+                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.errors %}<small style="color: #ffd1d1;">{{ field.errors|join:", " }}</small>{% endif %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <h2 class="section-title" style="margin-top: 30px;">{{ t.performance_metrics }}</h2>
+                <div class="form-grid">
+                    {% for field in form %}
+                        {% if forloop.counter0 >= 6 and forloop.counter0 < 13 %}
+                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <h2 class="section-title" style="margin-top: 30px;">{{ t.market_metrics }}</h2>
+                <div class="form-grid">
+                    {% for field in form %}
+                        {% if forloop.counter0 >= 13 and forloop.counter0 < 18 %}
+                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <h2 class="section-title" style="margin-top: 30px;">{{ t.marketing_metrics }}</h2>
+                <div class="form-grid">
+                    {% for field in form %}
+                        {% if forloop.counter0 >= 18 and forloop.counter0 < 23 %}
+                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <h2 class="section-title" style="margin-top: 30px;">{{ t.behavior_metrics }}</h2>
+                <div class="form-grid">
+                    {% for field in form %}
+                        {% if forloop.counter0 >= 23 %}
+                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+
+                <div class="actions">
+                    <button class="button button-primary" type="submit">{{ t.save_player }}</button>
+                    <a class="button button-secondary" href="{% url 'dashboard' %}">{{ t.back_to_dashboard }}</a>
+                    {% if player %}
+                        <a class="button button-secondary" href="{% url 'player-report' player.id %}">{{ t.export_pdf }}</a>
+                    {% endif %}
+                </div>
+            </form>
+        </section>
+    </main>
+</div>
+{% endblock %}

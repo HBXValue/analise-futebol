@@ -1,0 +1,41 @@
+from django.urls import path
+
+from valuation.views import (
+    csv_template_view,
+    csv_upload_view,
+    dashboard_view,
+    export_report_view,
+    live_analysis_event_view,
+    live_analysis_session_view,
+    live_analysis_view,
+    login_view,
+    logout_view,
+    player_create_view,
+    player_edit_view,
+    player_note_view,
+    player_on_ball_event_view,
+    player_plan_view,
+    player_progress_view,
+    player_snapshot_view,
+    signup_view,
+)
+
+urlpatterns = [
+    path("", dashboard_view, name="dashboard"),
+    path("analysis/live/", live_analysis_view, name="live-analysis"),
+    path("analysis/live/session/", live_analysis_session_view, name="live-analysis-session"),
+    path("analysis/live/events/", live_analysis_event_view, name="live-analysis-event"),
+    path("login/", login_view, name="login"),
+    path("signup/", signup_view, name="signup"),
+    path("logout/", logout_view, name="logout"),
+    path("players/new/", player_create_view, name="player-create"),
+    path("players/<int:player_id>/edit/", player_edit_view, name="player-edit"),
+    path("players/<int:player_id>/notes/", player_note_view, name="player-note"),
+    path("players/<int:player_id>/on-ball-events/", player_on_ball_event_view, name="player-on-ball-event"),
+    path("players/<int:player_id>/plans/", player_plan_view, name="player-plan"),
+    path("players/<int:player_id>/progress/", player_progress_view, name="player-progress"),
+    path("players/<int:player_id>/snapshot/", player_snapshot_view, name="player-snapshot"),
+    path("players/upload/", csv_upload_view, name="player-upload"),
+    path("players/template.csv", csv_template_view, name="player-template"),
+    path("players/<int:player_id>/report.pdf", export_report_view, name="player-report"),
+]
