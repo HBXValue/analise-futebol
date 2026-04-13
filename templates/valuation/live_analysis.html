@@ -1,7 +1,8 @@
 {% extends "valuation/base.html" %}
-{% block title %}Analise ao vivo | HBX{% endblock %}
+{% block title %}Match Analysis | HBX{% endblock %}
 {% block body %}
 <section class="live-shell live-redesign">
+    {% include "valuation/_global_player_bar.html" %}
     {% if messages %}
         <div class="messages">
             {% for message in messages %}
@@ -12,18 +13,70 @@
 
     <div class="live-topbar">
         <div class="hero-card" style="margin: 0; flex: 1;">
-            <span class="pill">Analise ao vivo</span>
+            <span class="pill">Match Analysis</span>
             <h1 style="margin: 12px 0 8px;">Registro de desempenho individual em jogo</h1>
             <p>Ficha unica para registrar a partida por blocos, com prioridade para clique rapido, leitura clara e minimo de digitacao.</p>
             <div class="actions">
                 <a class="button button-secondary" href="{% url 'dashboard' %}?lang={{ lang }}">Dashboard</a>
+                <a class="button button-secondary" href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+                <a class="button button-secondary" href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+                <a class="button button-secondary" href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+                <a class="button button-secondary" href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+                <a class="button button-secondary" href="{% url 'data' %}?lang={{ lang }}">Data</a>
                 <button class="button button-secondary" type="button" id="new-sheet-button">Iniciar nova ficha</button>
             </div>
         </div>
 
         <div class="panel live-control-panel">
+            <div style="margin-bottom: 18px;">
+                <strong style="display: block; margin-bottom: 6px;">Contexto da analise</strong>
+                <p style="margin: 0; color: var(--muted);">Escolha o pais, depois a liga e por fim o clube. Em seguida selecione o atleta para iniciar a ficha no contexto certo.</p>
+            </div>
             <div class="field-group">
-                <label for="player-autofill">Atleta cadastrado</label>
+                <label for="player-country-filter">Passo 1 · Pais</label>
+                <select id="player-country-filter" class="field-input">
+                    <option value="">Escolha um pais</option>
+                    {% for country in countries %}
+                        <option value="{{ country.code }}">{{ country.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field-group">
+                <label for="player-division-filter">Passo 2 · Liga</label>
+                <select id="player-division-filter" class="field-input" disabled>
+                    <option value="">Escolha primeiro o pais</option>
+                    {% for division in division_suggestions %}
+                        <option value="{{ division.short_name|default:division.name }}" data-country="{{ division.country.code }}">
+                            {{ division.country.name }} | {{ division.short_name|default:division.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field-group">
+                <label for="player-club-filter">Passo 3 · Clube</label>
+                <select id="player-club-filter" class="field-input" disabled>
+                    <option value="">Escolha primeiro a liga</option>
+                    {% for club in club_suggestions %}
+                        <option
+                            value="{{ club.short_name|default:club.official_name }}"
+                            data-country="{{ club.country.code }}"
+                            data-division="{{ club.division.short_name|default:club.division.name }}"
+                        >
+                            {{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.short_name|default:club.official_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="grid-column: 1 / -1; padding: 14px 16px; border-radius: 14px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.08);">
+                <strong style="display: block; margin-bottom: 6px;">Resumo do contexto</strong>
+                <span id="analysis-context-summary" style="color: var(--muted);">Nenhum pais, liga ou clube selecionado ainda.</span>
+            </div>
+            <div class="field-group">
+                <label for="player-search">Passo 4 · Buscar atleta</label>
+                <input id="player-search" class="field-input" type="text" placeholder="Digite nome do atleta">
+            </div>
+            <div class="field-group">
+                <label for="player-autofill">Passo 5 · Atleta cadastrado</label>
                 <select id="player-autofill" class="field-input">
                     <option value="">Selecionar para preencher</option>
                     {% for player in player_autofill %}
@@ -32,12 +85,16 @@
                             data-name="{{ player.name }}"
                             data-position-group="{{ player.position_group }}"
                             data-team="{{ player.team }}"
+                            data-country="{{ player.country_code }}"
+                            data-division="{{ player.division_name }}"
+                            data-club="{{ player.club_name }}"
                             {% if selected_player and selected_player.id == player.id %}selected{% endif %}
                         >
-                            {{ player.name }}
+                            {{ player.name }} | {{ player.team }}
                         </option>
                     {% endfor %}
                 </select>
+                <small style="color: var(--muted);">Filtre por pais, divisao, clube ou nome para trocar rapidamente o contexto da ficha.</small>
             </div>
             <div class="field-group">
                 <label for="saved-report-select">Fichas salvas</label>
@@ -405,10 +462,16 @@
         return JSON.parse(JSON.stringify(BLANK_PAYLOAD));
     }
 
-    function applySelectedPlayer() {
+            function applySelectedPlayer() {
         const select = document.getElementById("player-autofill");
         const selected = select.options[select.selectedIndex];
         if (!selected || !selected.value) return;
+        document.getElementById("player-country-filter").value = selected.dataset.country || "";
+        document.getElementById("player-division-filter").value = selected.dataset.division || "";
+        document.getElementById("player-club-filter").value = selected.dataset.club || "";
+        filterDivisionOptions();
+        filterClubOptions();
+        filterPlayerOptions();
         state.informacoes_gerais.player_id = selected.value;
         state.informacoes_gerais.nome_atleta = selected.dataset.name || "";
         state.informacoes_gerais.posicao = selected.dataset.positionGroup || "";
@@ -420,6 +483,74 @@
         const position = POSITION_SPECIFIC[state.informacoes_gerais.posicao] ? state.informacoes_gerais.posicao : "";
         ensurePositionState(position);
         syncAll();
+    }
+
+    function updateAnalysisContextSummary() {
+        const countryFilter = document.getElementById("player-country-filter");
+        const divisionFilter = document.getElementById("player-division-filter");
+        const clubFilter = document.getElementById("player-club-filter");
+        const summary = document.getElementById("analysis-context-summary");
+        const countryLabel = countryFilter.options[countryFilter.selectedIndex]?.text?.trim() || "Pais nao selecionado";
+        const divisionLabel = divisionFilter.value || "Liga nao selecionada";
+        const clubLabel = clubFilter.value || "Clube nao selecionado";
+        if (!countryFilter.value && !divisionFilter.value && !clubFilter.value) {
+            summary.textContent = "Nenhum pais, liga ou clube selecionado ainda.";
+            return;
+        }
+        summary.textContent = `${countryLabel} -> ${divisionLabel} -> ${clubLabel}`;
+    }
+
+    function filterDivisionOptions() {
+        const countryFilter = document.getElementById("player-country-filter");
+        const divisionFilter = document.getElementById("player-division-filter");
+        const countryValue = countryFilter.value || "";
+        divisionFilter.disabled = !countryValue;
+        divisionFilter.options[0].text = countryValue ? "Selecione uma liga" : "Escolha primeiro o pais";
+        Array.from(divisionFilter.options).forEach((option, index) => {
+            if (index === 0) return;
+            option.hidden = !!countryValue && option.dataset.country !== countryValue;
+        });
+        if (divisionFilter.selectedOptions[0]?.hidden) {
+            divisionFilter.value = "";
+        }
+        updateAnalysisContextSummary();
+    }
+
+    function filterClubOptions() {
+        const countryValue = document.getElementById("player-country-filter").value || "";
+        const divisionValue = document.getElementById("player-division-filter").value || "";
+        const clubFilter = document.getElementById("player-club-filter");
+        clubFilter.disabled = !countryValue || !divisionValue;
+        clubFilter.options[0].text = divisionValue ? "Selecione um clube" : "Escolha primeiro a liga";
+        Array.from(clubFilter.options).forEach((option, index) => {
+            if (index === 0) return;
+            const countryMatches = !countryValue || option.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || option.dataset.division === divisionValue;
+            option.hidden = !(countryMatches && divisionMatches);
+        });
+        if (clubFilter.selectedOptions[0]?.hidden) {
+            clubFilter.value = "";
+        }
+        updateAnalysisContextSummary();
+    }
+
+    function filterPlayerOptions() {
+        const countryValue = document.getElementById("player-country-filter").value || "";
+        const divisionValue = document.getElementById("player-division-filter").value || "";
+        const clubValue = document.getElementById("player-club-filter").value || "";
+        const searchValue = (document.getElementById("player-search").value || "").trim().toLowerCase();
+        const playerSelect = document.getElementById("player-autofill");
+        Array.from(playerSelect.options).forEach((option, index) => {
+            if (index === 0) return;
+            const countryMatches = !countryValue || option.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || option.dataset.division === divisionValue;
+            const clubMatches = !clubValue || option.dataset.club === clubValue;
+            const searchMatches = !searchValue || option.textContent.toLowerCase().includes(searchValue);
+            option.hidden = !(countryMatches && divisionMatches && clubMatches && searchMatches);
+        });
+        if (playerSelect.selectedOptions[0]?.hidden) {
+            playerSelect.value = "";
+        }
     }
 
     function bindGeneralInputs() {
@@ -548,6 +679,23 @@
     }
 
     function bindTopControls() {
+        document.getElementById("player-country-filter").addEventListener("change", () => {
+            document.getElementById("player-division-filter").value = "";
+            document.getElementById("player-club-filter").value = "";
+            filterDivisionOptions();
+            filterClubOptions();
+            filterPlayerOptions();
+        });
+        document.getElementById("player-division-filter").addEventListener("change", () => {
+            document.getElementById("player-club-filter").value = "";
+            filterClubOptions();
+            filterPlayerOptions();
+        });
+        document.getElementById("player-club-filter").addEventListener("change", () => {
+            filterPlayerOptions();
+            updateAnalysisContextSummary();
+        });
+        document.getElementById("player-search").addEventListener("input", filterPlayerOptions);
         document.getElementById("player-autofill").addEventListener("change", applySelectedPlayer);
         document.getElementById("saved-report-select").addEventListener("change", (event) => {
             if (!event.target.value) {
@@ -580,7 +728,11 @@
     bindPhysicalInputs();
     bindTextAreas();
     bindTopControls();
+    filterDivisionOptions();
+    filterClubOptions();
+    filterPlayerOptions();
     ensurePositionState(state.informacoes_gerais.posicao || state.indicadores_especificos_posicao.grupo_posicao || "");
     syncAll();
+    updateAnalysisContextSummary();
 </script>
 {% endblock %}

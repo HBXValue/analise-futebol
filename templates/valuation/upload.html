@@ -6,8 +6,12 @@
         <div class="brand">HBX<small>{{ t.valuation_system }}</small></div>
         <div class="nav">
             <a href="{% url 'dashboard' %}">{{ t.dashboard }}</a>
-            <a href="{% url 'player-create' %}">{{ t.add_player }}</a>
-            <a class="active" href="{% url 'player-upload' %}">{{ t.upload_csv }}</a>
+            <a href="{% url 'player-create' %}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a class="active" href="{% url 'data' %}?lang={{ lang }}">Data</a>
             <a href="{% url 'logout' %}">{{ t.logout }}</a>
         </div>
         <div class="lang-switch">
@@ -17,6 +21,7 @@
         </div>
     </aside>
     <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
         <section class="hero-card">
             <span class="pill">{{ t.bulk_workflow }}</span>
             <h1>{{ t.upload_player_data_via_csv }}</h1>

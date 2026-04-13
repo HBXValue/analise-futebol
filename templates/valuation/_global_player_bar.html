@@ -1,0 +1,160 @@
+{% if global_players %}
+<section class="global-player-bar">
+    <div class="global-player-header">
+        <div class="global-player-title">
+            <strong>Contexto global do atleta</strong>
+            <span id="global-athlete-summary" class="global-player-summary">
+                {% if global_selected_player %}
+                    {{ global_selected_player.name }} | {% if global_selected_player.division_reference_id %}{{ global_selected_player.division_reference.country.name }} | {{ global_selected_player.division_reference.short_name|default:global_selected_player.league_level }} | {% endif %}{{ global_selected_player.club_reference.short_name|default:global_selected_player.club_origin }}
+                {% else %}
+                    Selecione um atleta para manter o contexto entre os módulos.
+                {% endif %}
+            </span>
+        </div>
+        <details class="global-player-advanced">
+            <summary class="global-player-toggle">Filtros</summary>
+            <div class="global-player-filters">
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label for="global-athlete-country">Pais</label>
+                        <select id="global-athlete-country" class="field-input">
+                            <option value="">Todos os paises</option>
+                            {% for country in countries %}
+                                <option value="{{ country.code }}">{{ country.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label for="global-athlete-division">Divisao</label>
+                        <select id="global-athlete-division" class="field-input">
+                            <option value="">Todas as divisoes</option>
+                            {% for division in division_suggestions %}
+                                <option value="{{ division.short_name|default:division.name }}" data-country="{{ division.country.code }}">
+                                    {{ division.country.name }} | {{ division.short_name|default:division.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label for="global-athlete-club">Clube</label>
+                        <select id="global-athlete-club" class="field-input">
+                            <option value="">Todos os clubes</option>
+                            {% for club in club_suggestions %}
+                                <option value="{{ club.short_name|default:club.official_name }}" data-country="{{ club.country.code }}" data-division="{{ club.division.short_name|default:club.division.name }}">
+                                    {{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.short_name|default:club.official_name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label for="global-athlete-search">Buscar atleta</label>
+                        <input id="global-athlete-search" class="field-input" type="text" placeholder="Digite nome do atleta">
+                    </div>
+                </div>
+            </div>
+        </details>
+    </div>
+    <div class="global-player-compact">
+        <div class="field-group">
+            <label for="global-athlete-selector">Atleta selecionado</label>
+            <select id="global-athlete-selector" class="field-input">
+                {% for player in global_players %}
+                    <option
+                        value="{{ player.id }}"
+                        data-country="{% if player.division_reference_id %}{{ player.division_reference.country.code }}{% endif %}"
+                        data-division="{% if player.division_reference_id %}{{ player.division_reference.short_name|default:player.league_level }}{% endif %}"
+                        data-club="{% if player.club_reference_id %}{{ player.club_reference.short_name|default:player.club_origin }}{% else %}{{ player.club_origin }}{% endif %}"
+                        {% if global_selected_player and player.id == global_selected_player.id %}selected{% endif %}
+                    >
+                        {{ player.name }} | {% if player.division_reference_id %}{{ player.division_reference.country.name }} | {{ player.division_reference.short_name|default:player.league_level }} | {% endif %}{{ player.club_reference.short_name|default:player.club_origin }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="button" class="button button-primary" id="global-athlete-apply">Aplicar contexto</button>
+    </div>
+</section>
+<script>
+(() => {
+    const normalize = (value) => (value || "").toString().trim().toLowerCase();
+    const countryFilter = document.getElementById("global-athlete-country");
+    const divisionFilter = document.getElementById("global-athlete-division");
+    const clubFilter = document.getElementById("global-athlete-club");
+    const searchField = document.getElementById("global-athlete-search");
+    const selector = document.getElementById("global-athlete-selector");
+    const applyButton = document.getElementById("global-athlete-apply");
+    const summary = document.getElementById("global-athlete-summary");
+    if (!countryFilter || !divisionFilter || !clubFilter || !searchField || !selector || !applyButton || !summary) return;
+
+    const updateSummary = () => {
+        const selected = selector.selectedOptions[0];
+        summary.textContent = selected ? selected.textContent : "Selecione um atleta para manter o contexto entre os módulos.";
+    };
+
+    const filterDivisionOptions = () => {
+        const countryValue = countryFilter.value || "";
+        Array.from(divisionFilter.options).forEach((option, index) => {
+            if (index === 0) return;
+            option.hidden = !!countryValue && option.dataset.country !== countryValue;
+        });
+        if (divisionFilter.selectedOptions[0]?.hidden) divisionFilter.value = "";
+    };
+
+    const filterClubOptions = () => {
+        const countryValue = countryFilter.value || "";
+        const divisionValue = divisionFilter.value || "";
+        Array.from(clubFilter.options).forEach((option, index) => {
+            if (index === 0) return;
+            const countryMatches = !countryValue || option.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || option.dataset.division === divisionValue;
+            option.hidden = !(countryMatches && divisionMatches);
+        });
+        if (clubFilter.selectedOptions[0]?.hidden) clubFilter.value = "";
+    };
+
+    const filterPlayers = () => {
+        const countryValue = countryFilter.value || "";
+        const divisionValue = divisionFilter.value || "";
+        const clubValue = clubFilter.value || "";
+        const searchValue = normalize(searchField.value);
+        Array.from(selector.options).forEach((option) => {
+            const countryMatches = !countryValue || option.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || option.dataset.division === divisionValue;
+            const clubMatches = !clubValue || option.dataset.club === clubValue;
+            const searchMatches = !searchValue || normalize(option.textContent).includes(searchValue);
+            option.hidden = !(countryMatches && divisionMatches && clubMatches && searchMatches);
+        });
+        if (selector.selectedOptions[0]?.hidden) selector.value = "";
+        updateSummary();
+    };
+
+    const navigateWithAthlete = () => {
+        const url = new URL(window.location.href);
+        if (selector.value) {
+            url.searchParams.set("athlete", selector.value);
+        } else {
+            url.searchParams.delete("athlete");
+        }
+        window.location.href = url.toString();
+    };
+
+    countryFilter.addEventListener("change", () => {
+        filterDivisionOptions();
+        filterClubOptions();
+        filterPlayers();
+    });
+    divisionFilter.addEventListener("change", () => {
+        filterClubOptions();
+        filterPlayers();
+    });
+    clubFilter.addEventListener("change", filterPlayers);
+    searchField.addEventListener("input", filterPlayers);
+    selector.addEventListener("change", updateSummary);
+    applyButton.addEventListener("click", navigateWithAthlete);
+    filterDivisionOptions();
+    filterClubOptions();
+    filterPlayers();
+    updateSummary();
+})();
+</script>
+{% endif %}

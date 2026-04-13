@@ -1,0 +1,198 @@
+{% extends "valuation/base.html" %}
+{% block title %}Reports | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>Reports</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}?lang={{ lang }}">Dashboard</a>
+            <a href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a class="active" href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a href="{% url 'data' %}?lang={{ lang }}">Data</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
+        <section class="hero-card">
+            <span class="pill">Reports</span>
+            <h1>Resumo executivo exportavel</h1>
+            <p>Transforme a leitura longitudinal do atleta em material objetivo para reuniao, tomada de decisao e entrega comercial.</p>
+        </section>
+
+        {% if selected_player and longitudinal_bi %}
+        <section class="panel" style="margin-top: 20px;">
+            <h2>Resumo executivo do atleta</h2>
+            <form method="get">
+                <input type="hidden" name="lang" value="{{ lang }}">
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label for="player">Atleta</label>
+                        <select id="player" name="player" class="field-input">
+                            {% for player in players %}
+                                <option value="{{ player.id }}" {% if selected_player and player.id == selected_player.id %}selected{% endif %}>
+                                    {{ player.name }} | {% if player.division_reference_id %}{{ player.division_reference.country.name }} | {{ player.division_reference.short_name|default:player.league_level }} | {% endif %}{{ player.club_reference.short_name|default:player.club_origin }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field-group">
+                        <label for="compare_window">Janela BI</label>
+                        <select id="compare_window" name="compare_window" class="field-input">
+                            {% for window in compare_windows %}
+                                <option value="{{ window }}" {% if compare_window == window %}selected{% endif %}>{{ window }} dias</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="actions">
+                    <button class="button button-primary" type="submit">Atualizar resumo</button>
+                    <a class="button button-secondary" href="{% url 'player-report' selected_player.id %}">HBX Value Report</a>
+                    {% if selected_case %}
+                        <a class="button button-secondary" href="{% url 'career-case-report-pdf' selected_case.id %}?lang={{ lang }}">PDF de inteligencia</a>
+                    {% endif %}
+                </div>
+            </form>
+
+            <div class="grid stats-grid" style="margin-top: 20px;">
+                <article class="stat-card">
+                    <span>Atleta</span>
+                    <strong>{{ selected_player.name }}</strong>
+                    <div>{{ selected_player.position }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>Status executivo</span>
+                    <strong>{{ longitudinal_bi.status_label }}</strong>
+                    <div>Delta score: {{ longitudinal_bi.delta.valuation_score|floatformat:1 }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>Valor no periodo</span>
+                    <strong>{{ longitudinal_bi.value_delta_pct|floatformat:1 }}%</strong>
+                    <div>Hoje vs {{ compare_window }} dias</div>
+                </article>
+                <article class="stat-card">
+                    <span>Melhor resposta</span>
+                    <strong>{{ longitudinal_bi.best_pillar_label }}</strong>
+                    <div>Pilar com melhor delta</div>
+                </article>
+                <article class="stat-card">
+                    <span>Ponto de atencao</span>
+                    <strong>{{ longitudinal_bi.worst_pillar_label }}</strong>
+                    <div>Pilar mais pressionado</div>
+                </article>
+            </div>
+
+            <section class="grid chart-grid" style="margin-top: 20px;">
+                <article class="panel">
+                    <h2>Delta por pilar</h2>
+                    <div id="reports-delta-chart" style="height: 320px;"></div>
+                </article>
+                <article class="panel">
+                    <h2>Leitura executiva</h2>
+                    <div class="progress-stack">
+                        <article class="progress-card">
+                            <div class="progress-meta">
+                                <div class="progress-label">Proxima acao recomendada</div>
+                                <div class="progress-values">
+                                    <span>{{ longitudinal_bi.recommended_action }}</span>
+                                </div>
+                            </div>
+                        </article>
+                        {% for alert in longitudinal_bi.alerts %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Alerta automatico</div>
+                                    <div class="progress-values">
+                                        <span>{{ alert }}</span>
+                                    </div>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </article>
+            </section>
+
+            <section class="panel" style="margin-top: 20px;">
+                <h2>Bloco para relatorio</h2>
+                <div class="progress-stack">
+                    {% for insight in longitudinal_bi.insights %}
+                        <article class="progress-card">
+                            <div class="progress-meta">
+                                <div class="progress-label">Insight</div>
+                                <div class="progress-values">
+                                    <span>{{ insight }}</span>
+                                </div>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            </section>
+        </section>
+        {% endif %}
+
+        <section class="grid chart-grid">
+            <article class="panel">
+                <h2>Relatorios de atleta</h2>
+                <table class="player-table">
+                    <thead>
+                    <tr>
+                        <th>Atleta</th>
+                        <th>Clube</th>
+                        <th>Acao</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for player in players %}
+                        <tr>
+                            <td><strong>{{ player.name }}</strong></td>
+                            <td>{{ player.club_origin }}</td>
+                            <td><a class="button button-primary" href="{% url 'player-report' player.id %}">HBX Value Report</a></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="3">Nenhum atleta cadastrado.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </article>
+
+            <article class="panel">
+                <h2>Relatorios de performance intelligence</h2>
+                <table class="player-table">
+                    <thead>
+                    <tr>
+                        <th>Caso</th>
+                        <th>Etapa</th>
+                        <th>Acao</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for case in cases %}
+                        <tr>
+                            <td><strong>{{ case.athlete_name }}</strong></td>
+                            <td>{{ case.current_step|title }}</td>
+                            <td><a class="button button-secondary" href="{% url 'career-case-report-pdf' case.id %}?lang={{ lang }}">Exportar PDF</a></td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="3">Nenhum caso de performance intelligence cadastrado.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </article>
+        </section>
+    </main>
+</div>
+<script>
+{% if longitudinal_delta_chart %}
+const reportsDeltaPayload = {{ longitudinal_delta_chart|safe }};
+Plotly.newPlot("reports-delta-chart", reportsDeltaPayload.data, reportsDeltaPayload.layout, {responsive: true, displayModeBar: false});
+{% endif %}
+</script>
+{% endblock %}

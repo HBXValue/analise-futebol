@@ -1,35 +1,26 @@
-# HB Eleven Valuation System
+# HBX
 
-Sistema web em Django para valuation de jogadores de futebol, com autenticação, input manual, upload CSV, dashboard com Plotly e exportação de relatório em PDF.
+Plataforma Django para cadastro, analise, inteligencia e valorizacao de atletas.
 
 ## Stack
 
 - Python 3.11+
 - Django 5.2
-- SQLite
-- Plotly.js via CDN
+- SQLite no ambiente local
+- PostgreSQL no deploy
+- WhiteNoise para arquivos estaticos
+- Gunicorn no Render
+- Waitress para execucao local em Windows
 
-## Principais recursos
+## Rodando localmente
 
-- Login e criação de conta com senha protegida por hash
-- Workspace individual por usuário para agentes e analistas
-- Estrutura de dados separada em `users`, `players`, `performance_metrics`, `market_metrics`, `marketing_metrics` e `behavior_metrics`
-- Motor de scoring com normalização 0-100
-- Score final com projeção de valor e label de potencial
-- Radar chart, curva de evolução, comparação de atletas e ranking percentílico por posição
-- Cadastro manual e importação por CSV
-- Exportação de relatório em PDF
-- Placeholders prontos para integrações futuras com Wyscout, Transfermarkt e Instagram API
-
-## Como rodar
-
-1. Instale as dependências:
+1. Instale as dependencias:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Rode as migrações:
+2. Rode as migracoes:
 
 ```bash
 python manage.py migrate
@@ -47,17 +38,62 @@ python manage.py runserver
 http://127.0.0.1:8000/
 ```
 
+## Rede local
+
+Para abrir em outros PCs da mesma rede:
+
+```powershell
+.\start_lan_server.ps1
+```
+
+Depois acesse:
+
+```text
+http://IP_DO_SERVIDOR:8000
+```
+
+## Deploy no Render
+
+O projeto foi preparado para:
+
+- usar `DATABASE_URL` no banco de producao
+- servir estaticos com `WhiteNoise`
+- usar `gunicorn config.wsgi:application`
+- manter fallback para SQLite local quando `DATABASE_URL` nao existir
+
+### Variaveis de ambiente
+
+- `DJANGO_SECRET_KEY`
+- `DJANGO_DEBUG=false`
+- `DATABASE_URL`
+- `RENDER_EXTERNAL_HOSTNAME` (fornecido pelo Render)
+
+### Configuracao recomendada
+
+O arquivo [render.yaml](/C:/Users/User/Documents/New%20project/render.yaml:1) ja inclui:
+
+- instalacao de dependencias
+- `collectstatic`
+- `migrate`
+- web service com Gunicorn
+- banco PostgreSQL gerenciado
+
+### Build command
+
+```bash
+pip install -r requirements.txt
+python manage.py collectstatic --noinput
+python manage.py migrate
+```
+
+### Start command
+
+```bash
+gunicorn config.wsgi:application
+```
+
 ## Testes
 
 ```bash
 python manage.py test valuation
 ```
-
-## Fluxo de uso
-
-1. Crie uma conta em `/signup/`
-2. Faça login
-3. Cadastre jogadores manualmente em `Add player`
-4. Ou importe em lote em `Upload CSV`
-5. Analise score, valor projetado, comparação e percentis no dashboard
-6. Exporte o PDF individual de cada atleta

@@ -8,13 +8,24 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
+from catalog.models import Country, Division
+from clubs.models import Club
 from valuation.auth import SESSION_KEY, get_current_user, login_required
+from valuation.constants import get_position_group
 from valuation.forms import AnalystNoteForm, CSVUploadForm, ComparisonForm, DevelopmentPlanForm, LiveAnalysisEventForm, LiveAnalysisSessionForm, LoginForm, OnBallEventForm, PlayerValuationForm, ProgressTrackingForm, SignUpForm, SnapshotSimulationForm, UpliftSimulationForm
 from valuation.i18n import LANGUAGES, get_language, get_translations, tr
-from valuation.models import LiveAnalysisSession, LivePlayerEvaluation, Player, User
+from valuation.models import CareerIntelligenceCase, LiveAnalysisSession, LivePlayerEvaluation, Player, User
+from valuation.ui_context import build_global_player_context
 from valuation.services import (
     build_dashboard_payload,
+    build_hbx_seed_from_profile,
     build_growth_insights,
+    calculate_scores,
+    clamp,
+    compute_hbx_value_profile,
+    fetch_tiktok_signals,
+    fetch_youtube_signals,
+    fetch_google_news_signals,
     comparison_chart_data,
     csv_template_response_content,
     ensure_live_analysis_session,
@@ -23,11 +34,18 @@ from valuation.services import (
     growth_chart_data,
     import_players_from_csv,
     live_analysis_summary,
+    longitudinal_delta_chart_data,
+    longitudinal_bi_payload,
+    normalize,
     pillar_trend_chart_data,
     percentile_chart_data,
     radar_chart_data,
+    score_composition_chart_data,
+    player_timeline_events,
+    get_hbx_value_profile,
     save_analyst_note,
     save_development_plan,
+    save_hbx_value_profile,
     save_live_analysis_event,
     save_live_analysis_session,
     save_manual_history_snapshot,
@@ -35,6 +53,8 @@ from valuation.services import (
     save_player_bundle,
     save_progress_tracking,
     simulate_uplift,
+    sync_live_report_to_integrated_modules,
+    sync_integrated_player_modules,
 )
 
 TECHNICAL_INDICATORS = [
@@ -210,6 +230,9 @@ def _blank_live_evaluation_payload():
 
 
 def _position_group_from_label(position_label):
+    mapped_group = get_position_group(position_label)
+    if mapped_group:
+        return mapped_group
     if position_label in POSITION_SPECIFIC_INDICATORS:
         return position_label
     normalized = (position_label or "").strip().lower()
@@ -249,6 +272,81 @@ def _coerce_non_negative_int(value):
     except (TypeError, ValueError):
         return 0
     return max(numeric, 0)
+
+
+def _build_hbx_value_score_seed(player):
+    scores = calculate_scores(player)
+    marketing = player.marketing_metrics
+    market = player.market_metrics
+    performance = player.performance_metrics
+    public_name = player.public_name or player.name
+    google_news_query = marketing.google_news_query or public_name
+    youtube_query = marketing.youtube_query or public_name
+    social_reach_score = round(normalize(marketing.followers, "followers"), 2)
+    mention_volume = int(round(marketing.media_mentions))
+    mention_momentum = round(clamp(50 + market.annual_growth), 2)
+    source_relevance = round((market.club_interest + market.club_reputation) / 2, 2)
+    estimated_reach = round((social_reach_score * 0.65) + (normalize(marketing.engagement, "engagement") * 0.35), 2)
+    performance_signal = round(
+        (scores["performance_score"] * 0.55)
+        + (normalize(performance.xg + performance.xa, "xg_xa") * 0.20)
+        + (normalize(performance.final_third_recoveries, "final_third_recoveries") * 0.25),
+        2,
+    )
+    attention_spike = round(
+        clamp((mention_momentum * 0.5) + (marketing.sentiment_score * 0.2) + (marketing.media_mentions * 0.15)),
+        2,
+    )
+    return {
+        "player_id": player.id,
+        "athlete_name": player.name,
+        "club_name": player.club_origin,
+        "position": player.position,
+        "current_value": float(player.current_value),
+        "instagram_handle": marketing.instagram_handle,
+        "google_news_query": google_news_query,
+        "google_news_rss": "",
+        "youtube_channel_id": "",
+        "youtube_query": youtube_query,
+        "tiktok_handle": marketing.tiktok_handle,
+        "tiktok_query": public_name,
+        "manual_context": "",
+        "instagram_mentions": mention_volume,
+        "instagram_momentum": mention_momentum,
+        "instagram_sentiment": round(marketing.sentiment_score, 2),
+        "instagram_reach": estimated_reach,
+        "instagram_authority": round(marketing.engagement * 5, 2),
+        "google_news_mentions": int(round(marketing.media_mentions * 0.35)),
+        "google_news_momentum": round(clamp(45 + market.annual_growth), 2),
+        "google_news_sentiment": round(marketing.sentiment_score, 2),
+        "google_news_reach": round((estimated_reach * 0.85), 2),
+        "google_news_authority": round(source_relevance, 2),
+        "youtube_mentions": int(round(marketing.media_mentions * 0.2)),
+        "youtube_momentum": round(clamp(40 + (market.annual_growth * 0.8)), 2),
+        "youtube_sentiment": round(marketing.sentiment_score, 2),
+        "youtube_reach": round((estimated_reach * 0.8), 2),
+        "youtube_authority": round((source_relevance * 0.9), 2),
+        "tiktok_mentions": int(round(marketing.media_mentions * 0.15)),
+        "tiktok_momentum": round(clamp(42 + (market.annual_growth * 0.9)), 2),
+        "tiktok_sentiment": round(marketing.sentiment_score, 2),
+        "tiktok_reach": round((estimated_reach * 0.9), 2),
+        "tiktok_authority": 58,
+        "manual_mentions": 0,
+        "manual_momentum": 0,
+        "manual_sentiment": round(marketing.sentiment_score, 2),
+        "manual_reach": 0,
+        "manual_authority": 50,
+        "manual_performance_rating": round(scores["performance_score"], 2),
+        "manual_attention_spike": attention_spike,
+        "manual_market_response": round(scores["marketing_score"], 2),
+        "manual_visibility_efficiency": round((scores["marketing_score"] * 0.6) + (scores["market_score"] * 0.4), 2),
+        "manual_note": "",
+        "narrative_keywords": [
+            "promissor" if scores["performance_score"] >= 65 else "em observacao",
+            "decisivo" if performance.xg + performance.xa >= 0.45 else "consistente",
+            "em ascensao" if market.annual_growth >= 12 else "estavel",
+        ],
+    }
 
 
 def _coerce_score(value):
@@ -379,6 +477,8 @@ def logout_view(request):
 def dashboard_view(request):
     lang = get_language(request)
     projection_period = request.GET.get("projection_period", "12")
+    compare_window = request.GET.get("compare_window", "90")
+    featured_player_id = request.GET.get("featured_player") or request.GET.get("athlete")
     current_user = get_current_user(request)
     players = list(
         Player.objects.filter(user=current_user).select_related(
@@ -386,14 +486,26 @@ def dashboard_view(request):
             "market_metrics",
             "marketing_metrics",
             "behavior_metrics",
+            "division_reference__country",
+            "club_reference",
         ).prefetch_related("history", "development_plans", "progress_tracking")
     )
+    for player in players:
+        sync_integrated_player_modules(player)
     comparison_form = ComparisonForm(request.GET or None, players=players)
     selected_ids = []
     if comparison_form.is_valid():
         selected_ids = [int(player_id) for player_id in comparison_form.cleaned_data["compare"]]
     selected_players = [player for player in players if player.id in selected_ids] or players[:3]
-    featured_player = selected_players[0] if selected_players else (players[0] if players else None)
+    featured_player = None
+    if featured_player_id:
+        try:
+            featured_id = int(featured_player_id)
+            featured_player = next((player for player in players if player.id == featured_id), None)
+        except (TypeError, ValueError):
+            featured_player = None
+    if featured_player is None:
+        featured_player = selected_players[0] if selected_players else (players[0] if players else None)
     snapshot_form = SnapshotSimulationForm(lang=lang, player=featured_player) if featured_player else None
     uplift_form = UpliftSimulationForm(request.POST or None, lang=lang, player=featured_player) if featured_player else None
     development_plan_form = DevelopmentPlanForm(lang=lang) if featured_player else None
@@ -402,9 +514,14 @@ def dashboard_view(request):
     if request.method == "POST" and request.POST.get("form_name") == "uplift" and featured_player and uplift_form.is_valid():
         uplift_result = simulate_uplift(featured_player, uplift_form.cleaned_data, lang)
 
+    players_payload = build_dashboard_payload(players, lang)
+    featured_payload = next((item for item in players_payload if featured_player and item["player"].id == featured_player.id), None)
+
     context = {
         "current_user": current_user,
-        "players_payload": build_dashboard_payload(players, lang),
+        "players": players,
+        "players_payload": players_payload,
+        "featured_payload": featured_payload,
         "comparison_form": comparison_form,
         "featured_player": featured_player,
         "selected_players": selected_players,
@@ -414,9 +531,15 @@ def dashboard_view(request):
         "percentile_chart": percentile_chart_data(players[:8], lang) if players else None,
         "evolution_chart": evolution_chart_data(featured_player, lang, projection_period) if featured_player else None,
         "pillar_trend_chart": pillar_trend_chart_data(featured_player, lang) if featured_player else None,
+        "score_composition_chart": score_composition_chart_data(featured_player, lang) if featured_player else None,
+        "longitudinal_bi": longitudinal_bi_payload(featured_player, lang, int(compare_window)) if featured_player else None,
+        "longitudinal_delta_chart": longitudinal_delta_chart_data(featured_player, lang, int(compare_window)) if featured_player else None,
+        "player_timeline": player_timeline_events(featured_player, int(compare_window)) if featured_player else [],
         "growth_insights": build_growth_insights(featured_player, lang, projection_period) if featured_player else None,
         "projection_period": projection_period,
         "projection_periods": ["3", "6", "12", "24"],
+        "compare_window": compare_window,
+        "compare_windows": ["30", "60", "90", "180"],
         "snapshot_form": snapshot_form,
         "uplift_form": uplift_form,
         "development_plan_form": development_plan_form,
@@ -432,6 +555,7 @@ def dashboard_view(request):
             context["growth_insights"]["period"],
         )
         context["main_driver_text"] = tr(lang, "main_driver_sentence") % context["growth_insights"]["main_driver"]
+    context.update(build_global_player_context(request, current_user, featured_player))
     return render(request, "valuation/dashboard.html", context)
 
 
@@ -439,13 +563,30 @@ def dashboard_view(request):
 def live_analysis_view(request):
     lang = get_language(request)
     current_user = get_current_user(request)
-    players = list(Player.objects.filter(user=current_user).order_by("name"))
+    players = list(
+        Player.objects.filter(user=current_user)
+        .select_related("division_reference__country", "club_reference")
+        .order_by("name")
+    )
+    for player in players:
+        sync_integrated_player_modules(player)
+    countries = list(Country.objects.filter(is_active=True).order_by("name"))
+    divisions = list(
+        Division.objects.filter(is_active=True)
+        .select_related("country")
+        .order_by("country__name", "scope", "state", "level", "name")
+    )
+    clubs = list(
+        Club.objects.filter(status=Club.Status.ACTIVE)
+        .select_related("country", "division")
+        .order_by("official_name")
+    )
     reports = list(
         LivePlayerEvaluation.objects.filter(user=current_user).select_related("player")
     )
     selected_player = None
     selected_report = None
-    selected_player_id = request.GET.get("player")
+    selected_player_id = request.GET.get("player") or request.GET.get("athlete")
     selected_report_id = request.GET.get("report")
     if selected_player_id:
         selected_player = get_object_or_404(Player, pk=selected_player_id, user=current_user)
@@ -462,18 +603,21 @@ def live_analysis_view(request):
         payload["informacoes_gerais"]["player_id"] = str(selected_report.player_id or "")
     elif selected_player:
         payload = _hydrate_payload_from_player(payload, selected_player)
-    return render(
-        request,
-        "valuation/live_analysis.html",
-        {
+    context = {
             "current_user": current_user,
             "players": players,
+            "countries": countries,
+            "division_suggestions": divisions,
+            "club_suggestions": clubs,
             "player_autofill": [
                 {
                     "id": player.id,
                     "name": player.name,
                     "team": player.club_origin,
                     "position_group": _position_group_from_label(player.position),
+                    "country_code": player.division_reference.country.code if player.division_reference_id else "",
+                    "division_name": player.division_reference.short_name if player.division_reference_id and player.division_reference.short_name else (player.league_level or ""),
+                    "club_name": player.club_reference.short_name if player.club_reference_id and player.club_reference.short_name else (player.club_origin or ""),
                 }
                 for player in players
             ],
@@ -492,8 +636,265 @@ def live_analysis_view(request):
             "lang": lang,
             "t": get_translations(lang),
             "languages": LANGUAGES,
-        },
+        }
+    context.update(build_global_player_context(request, current_user, selected_player))
+    return render(
+        request,
+        "valuation/live_analysis.html",
+        context,
     )
+
+
+@login_required
+def hbx_value_score_view(request):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    players = list(
+        Player.objects.filter(user=current_user)
+        .select_related(
+            "performance_metrics",
+            "market_metrics",
+            "marketing_metrics",
+            "behavior_metrics",
+            "hbx_value_profile",
+            "division_reference__country",
+            "club_reference",
+        )
+        .order_by("name")
+    )
+    selected_player = None
+    selected_player_id = request.POST.get("player_id") or request.GET.get("player") or request.GET.get("athlete")
+    if selected_player_id:
+        selected_player = get_object_or_404(
+            Player.objects.select_related(
+                "performance_metrics",
+                "market_metrics",
+                "marketing_metrics",
+                "behavior_metrics",
+                "hbx_value_profile",
+                "division_reference__country",
+                "club_reference",
+            ),
+            pk=selected_player_id,
+            user=current_user,
+        )
+    elif players:
+        selected_player = players[0]
+
+    if request.method == "POST" and selected_player:
+        action = request.POST.get("action") or "save_profile"
+        profile_input = {
+            "instagram_handle": request.POST.get("instagram_handle"),
+            "google_news_query": request.POST.get("google_news_query"),
+            "google_news_rss": request.POST.get("google_news_rss"),
+            "youtube_channel_id": request.POST.get("youtube_channel_id"),
+            "youtube_query": request.POST.get("youtube_query"),
+            "tiktok_handle": request.POST.get("tiktok_handle"),
+            "tiktok_query": request.POST.get("tiktok_query"),
+            "manual_context": request.POST.get("manual_context"),
+            "instagram_mentions": request.POST.get("instagram_mentions"),
+            "instagram_momentum": request.POST.get("instagram_momentum"),
+            "instagram_sentiment": request.POST.get("instagram_sentiment"),
+            "instagram_reach": request.POST.get("instagram_reach"),
+            "instagram_authority": request.POST.get("instagram_authority"),
+            "google_news_mentions": request.POST.get("google_news_mentions"),
+            "google_news_momentum": request.POST.get("google_news_momentum"),
+            "google_news_sentiment": request.POST.get("google_news_sentiment"),
+            "google_news_reach": request.POST.get("google_news_reach"),
+            "google_news_authority": request.POST.get("google_news_authority"),
+            "youtube_mentions": request.POST.get("youtube_mentions"),
+            "youtube_momentum": request.POST.get("youtube_momentum"),
+            "youtube_sentiment": request.POST.get("youtube_sentiment"),
+            "youtube_reach": request.POST.get("youtube_reach"),
+            "youtube_authority": request.POST.get("youtube_authority"),
+            "tiktok_mentions": request.POST.get("tiktok_mentions"),
+            "tiktok_momentum": request.POST.get("tiktok_momentum"),
+            "tiktok_sentiment": request.POST.get("tiktok_sentiment"),
+            "tiktok_reach": request.POST.get("tiktok_reach"),
+            "tiktok_authority": request.POST.get("tiktok_authority"),
+            "manual_mentions": request.POST.get("manual_mentions"),
+            "manual_momentum": request.POST.get("manual_momentum"),
+            "manual_sentiment": request.POST.get("manual_sentiment"),
+            "manual_reach": request.POST.get("manual_reach"),
+            "manual_authority": request.POST.get("manual_authority"),
+            "manual_performance_rating": request.POST.get("manual_performance_rating"),
+            "manual_attention_spike": request.POST.get("manual_attention_spike"),
+            "manual_market_response": request.POST.get("manual_market_response"),
+            "manual_visibility_efficiency": request.POST.get("manual_visibility_efficiency"),
+            "manual_note": request.POST.get("manual_note"),
+            "narrative_keywords": [item.strip() for item in request.POST.get("narrative_keywords", "").split(",") if item.strip()],
+        }
+        if action == "fetch_google_news":
+            query = profile_input["google_news_query"] or selected_player.name
+            try:
+                google_news = fetch_google_news_signals(query, profile_input["google_news_rss"])
+            except Exception:
+                messages.error(request, "Nao foi possivel consultar o Google News RSS agora.")
+                return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
+            profile_input.update(
+                {
+                    "google_news_query": google_news["query"],
+                    "google_news_rss": google_news["rss_url"],
+                    "google_news_mentions": google_news["mentions"],
+                    "google_news_momentum": google_news["momentum"],
+                    "google_news_sentiment": google_news["sentiment"],
+                    "google_news_reach": google_news["reach"],
+                    "google_news_authority": google_news["authority"],
+                    "google_news_articles": google_news["articles"],
+                }
+            )
+            save_hbx_value_profile(selected_player, profile_input, source="ai")
+            messages.success(request, "Google News RSS coletado e integrado ao perfil do atleta.")
+        elif action == "fetch_youtube":
+            query = profile_input["youtube_query"] or selected_player.name
+            try:
+                youtube = fetch_youtube_signals(query, profile_input["youtube_channel_id"])
+            except Exception:
+                messages.error(request, "Nao foi possivel consultar o YouTube Data API agora. Verifique a YOUTUBE_API_KEY.")
+                return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
+            profile_input.update(
+                {
+                    "youtube_query": youtube["query"],
+                    "youtube_channel_id": youtube["channel_id"],
+                    "youtube_mentions": youtube["mentions"],
+                    "youtube_momentum": youtube["momentum"],
+                    "youtube_sentiment": youtube["sentiment"],
+                    "youtube_reach": youtube["reach"],
+                    "youtube_authority": youtube["authority"],
+                    "youtube_videos": youtube["videos"],
+                }
+            )
+            save_hbx_value_profile(selected_player, profile_input, source="ai")
+            messages.success(request, "YouTube Data API coletado e integrado ao perfil do atleta.")
+        elif action == "fetch_tiktok":
+            query = profile_input["tiktok_query"] or selected_player.name
+            try:
+                tiktok = fetch_tiktok_signals(query, profile_input["tiktok_handle"])
+            except Exception:
+                messages.error(request, "Nao foi possivel consultar o TikTok agora. Verifique o acesso oficial da Research API.")
+                return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
+            profile_input.update(
+                {
+                    "tiktok_query": tiktok["query"],
+                    "tiktok_handle": tiktok["handle"],
+                    "tiktok_mentions": tiktok["mentions"],
+                    "tiktok_momentum": tiktok["momentum"],
+                    "tiktok_sentiment": tiktok["sentiment"],
+                    "tiktok_reach": tiktok["reach"],
+                    "tiktok_authority": tiktok["authority"],
+                    "tiktok_videos": tiktok["videos"],
+                }
+            )
+            save_hbx_value_profile(selected_player, profile_input, source="ai")
+            messages.success(request, "TikTok integrado ao perfil do atleta.")
+        else:
+            save_hbx_value_profile(selected_player, profile_input, source=request.POST.get("source", "manual"))
+            messages.success(request, "HBX Value integrado ao perfil do atleta.")
+        return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
+
+    selected_hbx_profile = get_hbx_value_profile(selected_player) if selected_player else None
+    if selected_player and selected_hbx_profile:
+        selected_seed = build_hbx_seed_from_profile(selected_player, selected_hbx_profile)
+    else:
+        selected_seed = _build_hbx_value_score_seed(selected_player) if selected_player else None
+
+    player_seed_map = {
+        str(player.id): (
+            build_hbx_seed_from_profile(player, player.hbx_value_profile)
+            if get_hbx_value_profile(player) else _build_hbx_value_score_seed(player)
+        )
+        for player in players
+    }
+    selected_metrics = compute_hbx_value_profile(selected_seed) if selected_seed else None
+    context = {
+            "current_user": current_user,
+            "players": players,
+            "selected_player": selected_player,
+            "selected_hbx_profile": selected_hbx_profile,
+            "selected_seed_json": json.dumps(selected_seed or {}, ensure_ascii=True),
+            "player_seed_map_json": json.dumps(player_seed_map, ensure_ascii=True),
+            "selected_metrics": selected_metrics,
+            "countries": list(Country.objects.filter(is_active=True).order_by("name")),
+            "division_suggestions": list(
+                Division.objects.filter(is_active=True).select_related("country").order_by("country__name", "scope", "state", "level", "name")
+            ),
+            "club_suggestions": list(
+                Club.objects.filter(status=Club.Status.ACTIVE).select_related("country", "division").order_by("official_name")
+            ),
+            "lang": lang,
+            "t": get_translations(lang),
+            "languages": LANGUAGES,
+        }
+    context.update(build_global_player_context(request, current_user, selected_player))
+    return render(
+        request,
+        "valuation/hbx_value_score.html",
+        context,
+    )
+
+
+@login_required
+def reports_view(request):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    compare_window = request.GET.get("compare_window", "90")
+    selected_player_id = request.GET.get("player") or request.GET.get("athlete")
+    players = list(
+        Player.objects.filter(user=current_user)
+        .select_related("performance_metrics", "market_metrics", "marketing_metrics", "behavior_metrics", "division_reference__country", "club_reference")
+        .order_by("name")
+    )
+    cases = list(
+        CareerIntelligenceCase.objects.filter(user=current_user).select_related("player").order_by("-updated_at", "athlete_name")
+    )
+    selected_player = None
+    if selected_player_id:
+        try:
+            selected_player = next((player for player in players if player.id == int(selected_player_id)), None)
+        except (TypeError, ValueError):
+            selected_player = None
+    if selected_player is None and players:
+        selected_player = players[0]
+    selected_case = (
+        CareerIntelligenceCase.objects.filter(player=selected_player).order_by("-updated_at", "-id").first()
+        if selected_player else None
+    )
+    context = {
+        "current_user": current_user,
+        "players": players,
+        "cases": cases,
+        "selected_player": selected_player,
+        "selected_case": selected_case,
+        "compare_window": compare_window,
+        "compare_windows": ["30", "60", "90", "180"],
+        "longitudinal_bi": longitudinal_bi_payload(selected_player, lang, int(compare_window)) if selected_player else None,
+        "longitudinal_delta_chart": longitudinal_delta_chart_data(selected_player, lang, int(compare_window)) if selected_player else None,
+        "lang": lang,
+        "t": get_translations(lang),
+        "languages": LANGUAGES,
+    }
+    context.update(build_global_player_context(request, current_user, selected_player))
+    return render(request, "valuation/reports_hub.html", context)
+
+
+@login_required
+def data_view(request):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    divisions = Division.objects.filter(is_active=True).count()
+    clubs = Club.objects.filter(status=Club.Status.ACTIVE).count()
+    athletes = Player.objects.filter(user=current_user).count()
+    context = {
+        "current_user": current_user,
+        "division_count": divisions,
+        "club_count": clubs,
+        "athlete_count": athletes,
+        "lang": lang,
+        "t": get_translations(lang),
+        "languages": LANGUAGES,
+    }
+    context.update(build_global_player_context(request, current_user))
+    return render(request, "valuation/data_hub.html", context)
 
 
 @login_required
@@ -528,6 +929,7 @@ def live_analysis_session_view(request):
     player_id = general_info.get("player_id")
     if player_id:
         player = get_object_or_404(Player, pk=player_id, user=current_user)
+        sync_integrated_player_modules(player)
 
     report_id = request.POST.get("report_id")
     report = None
@@ -562,6 +964,9 @@ def live_analysis_session_view(request):
         report.save()
     else:
         report = LivePlayerEvaluation.objects.create(**report_values)
+
+    if player:
+        sync_live_report_to_integrated_modules(player, report)
 
     messages.success(request, "Ficha de analise ao vivo salva.")
     redirect_query = f"?report={report.id}&lang={lang}"
@@ -665,15 +1070,26 @@ def player_create_view(request):
     lang = get_language(request)
     current_user = get_current_user(request)
     form = PlayerValuationForm(request.POST or None, lang=lang)
+    countries = list(Country.objects.filter(is_active=True).order_by("name"))
+    divisions = list(Division.objects.filter(is_active=True).select_related("country").order_by("country__name", "scope", "state", "level", "name"))
+    clubs = list(Club.objects.filter(status=Club.Status.ACTIVE).select_related("country", "division").order_by("official_name"))
     if request.method == "POST" and form.is_valid():
         save_player_bundle(current_user, form.cleaned_data)
         messages.success(request, tr(lang, "player_saved"))
         return redirect("dashboard")
-    return render(
-        request,
-        "valuation/player_form.html",
-        {"form": form, "current_user": current_user, "page_title": tr(lang, "new_player"), "lang": lang, "t": get_translations(lang), "languages": LANGUAGES},
-    )
+    context = {
+        "form": form,
+        "current_user": current_user,
+        "page_title": tr(lang, "new_player"),
+        "countries": countries,
+        "division_suggestions": divisions,
+        "club_suggestions": clubs,
+        "lang": lang,
+        "t": get_translations(lang),
+        "languages": LANGUAGES,
+    }
+    context.update(build_global_player_context(request, current_user))
+    return render(request, "valuation/player_form.html", context)
 
 
 @login_required
@@ -692,15 +1108,27 @@ def player_edit_view(request, player_id):
         user=current_user,
     )
     form = PlayerValuationForm(request.POST or None, player=player, lang=lang)
+    countries = list(Country.objects.filter(is_active=True).order_by("name"))
+    divisions = list(Division.objects.filter(is_active=True).select_related("country").order_by("country__name", "scope", "state", "level", "name"))
+    clubs = list(Club.objects.filter(status=Club.Status.ACTIVE).select_related("country", "division").order_by("official_name"))
     if request.method == "POST" and form.is_valid():
         save_player_bundle(current_user, form.cleaned_data, player=player)
         messages.success(request, tr(lang, "player_updated"))
         return redirect("dashboard")
-    return render(
-        request,
-        "valuation/player_form.html",
-        {"form": form, "current_user": current_user, "page_title": f"{tr(lang, 'edit')} {player.name}", "player": player, "lang": lang, "t": get_translations(lang), "languages": LANGUAGES},
-    )
+    context = {
+        "form": form,
+        "current_user": current_user,
+        "page_title": f"{tr(lang, 'edit')} {player.name}",
+        "player": player,
+        "countries": countries,
+        "division_suggestions": divisions,
+        "club_suggestions": clubs,
+        "lang": lang,
+        "t": get_translations(lang),
+        "languages": LANGUAGES,
+    }
+    context.update(build_global_player_context(request, current_user, player))
+    return render(request, "valuation/player_form.html", context)
 
 
 @login_required
@@ -716,7 +1144,9 @@ def csv_upload_view(request):
         for error in result.errors[:10]:
             messages.error(request, error)
         return redirect("dashboard")
-    return render(request, "valuation/upload.html", {"form": form, "current_user": current_user, "lang": lang, "t": get_translations(lang), "languages": LANGUAGES})
+    context = {"form": form, "current_user": current_user, "lang": lang, "t": get_translations(lang), "languages": LANGUAGES}
+    context.update(build_global_player_context(request, current_user))
+    return render(request, "valuation/upload.html", context)
 
 
 @login_required

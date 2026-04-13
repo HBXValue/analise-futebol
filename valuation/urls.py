@@ -1,10 +1,13 @@
 from django.urls import path
 
+from valuation.career_views import career_case_create_view, career_case_list_view, career_case_report_pdf_view, career_case_step_view
 from valuation.views import (
     csv_template_view,
     csv_upload_view,
     dashboard_view,
+    data_view,
     export_report_view,
+    hbx_value_score_view,
     live_analysis_event_view,
     live_analysis_session_view,
     live_analysis_view,
@@ -17,12 +20,20 @@ from valuation.views import (
     player_plan_view,
     player_progress_view,
     player_snapshot_view,
+    reports_view,
     signup_view,
 )
 
 urlpatterns = [
     path("", dashboard_view, name="dashboard"),
+    path("reports/", reports_view, name="reports"),
+    path("data/", data_view, name="data"),
+    path("career/", career_case_list_view, name="career-case-list"),
+    path("career/new/", career_case_create_view, name="career-case-create"),
+    path("career/<int:case_id>/<str:step>/", career_case_step_view, name="career-case-step"),
+    path("career/<int:case_id>/report.pdf", career_case_report_pdf_view, name="career-case-report-pdf"),
     path("analysis/live/", live_analysis_view, name="live-analysis"),
+    path("analysis/value-score/", hbx_value_score_view, name="hbx-value-score"),
     path("analysis/live/session/", live_analysis_session_view, name="live-analysis-session"),
     path("analysis/live/events/", live_analysis_event_view, name="live-analysis-event"),
     path("login/", login_view, name="login"),

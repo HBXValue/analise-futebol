@@ -2,6 +2,9 @@ from decimal import Decimal
 
 from django.db import models
 
+from catalog.models import Division
+from clubs.models import Club
+
 
 class User(models.Model):
     email = models.EmailField(unique=True)
@@ -16,13 +19,57 @@ class User(models.Model):
 
 
 class Player(models.Model):
+    class DominantFoot(models.TextChoices):
+        RIGHT = "right", "Direito"
+        LEFT = "left", "Esquerdo"
+        BOTH = "both", "Ambos"
+
+    class Category(models.TextChoices):
+        PROFESSIONAL = "professional", "Profissional"
+        ACADEMY = "academy", "Base"
+
+    class SquadStatus(models.TextChoices):
+        STARTER = "starter", "Titular"
+        BACKUP = "backup", "Reserva"
+        ROTATION = "rotation", "Rotacao"
+        LIMITED = "limited", "Pouco utilizado"
+        RECOVERING = "recovering", "Retorno de lesao"
+
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="players")
     name = models.CharField(max_length=160)
+    public_name = models.CharField(max_length=160, blank=True)
     age = models.PositiveSmallIntegerField()
+    birth_date = models.DateField(null=True, blank=True)
+    nationality = models.CharField(max_length=80, blank=True)
     position = models.CharField(max_length=60)
+    secondary_positions = models.JSONField(default=list, blank=True)
+    dominant_foot = models.CharField(max_length=10, choices=DominantFoot.choices, blank=True)
+    height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
+    weight_kg = models.PositiveSmallIntegerField(null=True, blank=True)
     current_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
     league_level = models.CharField(max_length=80)
     club_origin = models.CharField(max_length=160)
+    category = models.CharField(max_length=20, choices=Category.choices, blank=True)
+    contract_months_remaining = models.PositiveSmallIntegerField(null=True, blank=True)
+    squad_status = models.CharField(max_length=20, choices=SquadStatus.choices, blank=True)
+    athlete_objectives = models.JSONField(default=list, blank=True)
+    training_environment_score = models.FloatField(default=0)
+    trajectory_score = models.FloatField(default=0)
+    profile_notes = models.TextField(blank=True)
+    division_reference = models.ForeignKey(
+        Division,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="valuation_players",
+    )
+    club_reference = models.ForeignKey(
+        Club,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="valuation_players",
+    )
 
     class Meta:
         db_table = "players"
@@ -30,6 +77,42 @@ class Player(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class HBXValueProfile(models.Model):
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        AI = "ai", "IA"
+
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="hbx_value_profile")
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.MANUAL)
+    mention_volume = models.PositiveIntegerField(default=0)
+    mention_momentum = models.FloatField(default=0)
+    sentiment_score = models.FloatField(default=0)
+    estimated_reach = models.FloatField(default=0)
+    source_relevance = models.FloatField(default=0)
+    performance_rating = models.FloatField(default=0)
+    attention_spike = models.FloatField(default=0)
+    market_response = models.FloatField(default=0)
+    visibility_efficiency = models.FloatField(default=0)
+    market_perception_index = models.FloatField(default=0)
+    performance_impact_score = models.FloatField(default=0)
+    impact_correlation_score = models.FloatField(default=0)
+    trend_label = models.CharField(max_length=40, blank=True)
+    narrative_label = models.CharField(max_length=40, blank=True)
+    market_label = models.CharField(max_length=80, blank=True)
+    narrative_summary = models.TextField(blank=True)
+    narrative_keywords = models.JSONField(default=list, blank=True)
+    strategic_insights = models.JSONField(default=list, blank=True)
+    source_targets = models.JSONField(default=dict, blank=True)
+    source_collection = models.JSONField(default=dict, blank=True)
+    delivery_payload = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "hbx_value_profiles"
+        ordering = ["-updated_at", "-id"]
 
 
 class PerformanceMetrics(models.Model):
@@ -60,6 +143,23 @@ class MarketMetrics(models.Model):
 
 class MarketingMetrics(models.Model):
     player = models.OneToOneField(Player, on_delete=models.CASCADE, primary_key=True, related_name="marketing_metrics", db_column="player_id")
+    instagram_handle = models.CharField(max_length=120, blank=True)
+    instagram_followers = models.FloatField(default=0)
+    instagram_engagement = models.FloatField(default=0)
+    instagram_posts = models.FloatField(default=0)
+    tiktok_handle = models.CharField(max_length=120, blank=True)
+    tiktok_followers = models.FloatField(default=0)
+    tiktok_engagement = models.FloatField(default=0)
+    tiktok_posts = models.FloatField(default=0)
+    x_handle = models.CharField(max_length=120, blank=True)
+    x_followers = models.FloatField(default=0)
+    x_engagement = models.FloatField(default=0)
+    google_news_query = models.CharField(max_length=160, blank=True)
+    youtube_query = models.CharField(max_length=160, blank=True)
+    youtube_subscribers = models.FloatField(default=0)
+    youtube_avg_views = models.FloatField(default=0)
+    youtube_videos = models.FloatField(default=0)
+    collection_notes = models.TextField(blank=True)
     followers = models.FloatField(default=0)
     engagement = models.FloatField(default=0)
     media_mentions = models.FloatField(default=0)
@@ -258,3 +358,302 @@ class LivePlayerEvaluation(models.Model):
     class Meta:
         db_table = "live_player_evaluations"
         ordering = ["-match_date", "-saved_at", "-id"]
+
+
+class CareerIntelligenceCase(models.Model):
+    class Category(models.TextChoices):
+        PROFESSIONAL = "professional", "Profissional"
+        ACADEMY = "academy", "Base"
+
+    class SquadStatus(models.TextChoices):
+        STARTER = "starter", "Titular"
+        BACKUP = "backup", "Reserva"
+        ROTATION = "rotation", "Rotacao"
+        LIMITED = "limited", "Pouco utilizado"
+        RECOVERING = "recovering", "Retorno de lesao"
+
+    class CurrentStep(models.TextChoices):
+        ATHLETE = "athlete", "Atleta"
+        CLUB = "club", "Clube"
+        COACH = "coach", "Treinador"
+        GAME_MODEL = "game_model", "Modelo de jogo"
+        COMPETITION = "competition", "Concorrencia"
+        DIAGNOSIS = "diagnosis", "Diagnostico"
+        PROGNOSIS = "prognosis", "Prognostico"
+        DEVELOPMENT = "development", "Plano"
+        REPORT = "report", "Relatorio"
+
+    class DominantFoot(models.TextChoices):
+        RIGHT = "right", "Direito"
+        LEFT = "left", "Esquerdo"
+        BOTH = "both", "Ambos"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="career_cases")
+    player = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, blank=True, related_name="career_cases")
+    athlete_name = models.CharField(max_length=160)
+    birth_date = models.DateField(null=True, blank=True)
+    nationality = models.CharField(max_length=80, blank=True)
+    position_primary = models.CharField(max_length=60, blank=True)
+    secondary_positions = models.JSONField(default=list, blank=True)
+    dominant_foot = models.CharField(max_length=10, choices=DominantFoot.choices, blank=True)
+    height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
+    weight_kg = models.PositiveSmallIntegerField(null=True, blank=True)
+    current_club = models.CharField(max_length=160, blank=True)
+    category = models.CharField(max_length=20, choices=Category.choices, blank=True)
+    contract_months_remaining = models.PositiveSmallIntegerField(null=True, blank=True)
+    squad_status = models.CharField(max_length=20, choices=SquadStatus.choices, blank=True)
+    athlete_objectives = models.JSONField(default=list, blank=True)
+    analyst_notes = models.TextField(blank=True)
+    current_step = models.CharField(max_length=20, choices=CurrentStep.choices, default=CurrentStep.ATHLETE)
+    report_generated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "career_intelligence_cases"
+        ordering = ["-updated_at", "-id"]
+
+    def __str__(self):
+        return self.athlete_name
+
+
+class ClubCompetitiveContext(models.Model):
+    class TeamMoment(models.TextChoices):
+        TITLE_RACE = "title_race", "Disputa por titulo"
+        RELEGATION = "relegation", "Luta contra rebaixamento"
+        REBUILD = "rebuild", "Reconstrucao"
+        DEVELOPMENT = "development", "Desenvolvimento"
+
+    class PressureLevel(models.TextChoices):
+        HIGH = "high", "Alta"
+        MEDIUM = "medium", "Media"
+        LOW = "low", "Baixa"
+
+    class ClubPhilosophy(models.TextChoices):
+        DEVELOPMENT = "development", "Formador"
+        COMPETITIVE = "competitive", "Competitivo"
+        MIXED = "mixed", "Misto"
+
+    case = models.OneToOneField(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="club_context")
+    club_name = models.CharField(max_length=160)
+    competition = models.CharField(max_length=160)
+    category = models.CharField(max_length=80, blank=True)
+    team_moment = models.CharField(max_length=20, choices=TeamMoment.choices)
+    pressure_level = models.CharField(max_length=10, choices=PressureLevel.choices)
+    club_philosophy = models.CharField(max_length=20, choices=ClubPhilosophy.choices)
+    notes = models.TextField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "club_competitive_contexts"
+        ordering = ["club_name", "id"]
+
+
+class CoachProfile(models.Model):
+    class ProfileType(models.TextChoices):
+        DEVELOPER = "developer", "Formador"
+        CONSERVATIVE = "conservative", "Conservador"
+        OFFENSIVE = "offensive", "Ofensivo"
+        REACTIVE = "reactive", "Reativo"
+        MANAGER = "manager", "Gestor"
+
+    class Preference(models.TextChoices):
+        EXPERIENCE = "experience", "Experiencia"
+        YOUTH = "youth", "Juventude"
+        BALANCED = "balanced", "Equilibrado"
+
+    class DemandLevel(models.TextChoices):
+        LOW = "low", "Baixo"
+        MEDIUM = "medium", "Medio"
+        HIGH = "high", "Alto"
+
+    case = models.OneToOneField(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="coach_profile")
+    coach_name = models.CharField(max_length=160)
+    age = models.PositiveSmallIntegerField(null=True, blank=True)
+    nationality = models.CharField(max_length=80, blank=True)
+    months_in_charge = models.PositiveSmallIntegerField(null=True, blank=True)
+    profile_type = models.CharField(max_length=20, choices=ProfileType.choices)
+    experience_preference = models.CharField(max_length=20, choices=Preference.choices)
+    academy_usage_history = models.TextField(blank=True)
+    physical_demand = models.CharField(max_length=10, choices=DemandLevel.choices)
+    tactical_demand = models.CharField(max_length=10, choices=DemandLevel.choices)
+    selection_criteria = models.JSONField(default=list, blank=True)
+    analyst_notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "coach_profiles"
+        ordering = ["coach_name", "id"]
+
+
+class TacticalGameModel(models.Model):
+    class PlayingStyle(models.TextChoices):
+        POSSESSION = "possession", "Posse"
+        TRANSITION = "transition", "Transicao"
+        DIRECT = "direct", "Jogo direto"
+        HIGH_PRESS = "high_press", "Pressao alta"
+        MIXED = "mixed", "Misto"
+
+    class CreativeFreedom(models.TextChoices):
+        LOW = "low", "Baixa"
+        MEDIUM = "medium", "Media"
+        HIGH = "high", "Alta"
+
+    case = models.OneToOneField(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="game_model")
+    base_system = models.CharField(max_length=30, blank=True)
+    in_possession_system = models.CharField(max_length=30, blank=True)
+    out_of_possession_system = models.CharField(max_length=30, blank=True)
+    playing_style = models.CharField(max_length=20, choices=PlayingStyle.choices, blank=True)
+    offensive_principles = models.TextField(blank=True)
+    defensive_principles = models.TextField(blank=True)
+    physical_demands_by_position = models.TextField(blank=True)
+    tactical_demands_by_position = models.TextField(blank=True)
+    creative_freedom = models.CharField(max_length=10, choices=CreativeFreedom.choices, blank=True)
+    analyst_notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "tactical_game_models"
+
+
+class PositionCompetitor(models.Model):
+    class SquadRole(models.TextChoices):
+        STARTER = "starter", "Titular"
+        BACKUP = "backup", "Reserva"
+        ROTATION = "rotation", "Rotacao"
+        PROSPECT = "prospect", "Promessa"
+
+    class DominantFoot(models.TextChoices):
+        RIGHT = "right", "Direito"
+        LEFT = "left", "Esquerdo"
+        BOTH = "both", "Ambos"
+
+    class FitLevel(models.TextChoices):
+        LOW = "low", "Baixa"
+        MEDIUM = "medium", "Media"
+        HIGH = "high", "Alta"
+
+    class TrustLevel(models.TextChoices):
+        LOW = "low", "Baixo"
+        MEDIUM = "medium", "Medio"
+        HIGH = "high", "Alto"
+
+    class LeadershipLevel(models.TextChoices):
+        LOW = "low", "Baixa"
+        MEDIUM = "medium", "Media"
+        HIGH = "high", "Alta"
+
+    case = models.ForeignKey(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="competitors")
+    name = models.CharField(max_length=160)
+    age = models.PositiveSmallIntegerField(null=True, blank=True)
+    position = models.CharField(max_length=60)
+    dominant_foot = models.CharField(max_length=10, choices=DominantFoot.choices, blank=True)
+    squad_role = models.CharField(max_length=20, choices=SquadRole.choices, blank=True)
+    starts = models.PositiveSmallIntegerField(default=0)
+    minutes_played = models.PositiveIntegerField(default=0)
+    hierarchy_order = models.PositiveSmallIntegerField(default=1)
+    strengths = models.TextField(blank=True)
+    weaknesses = models.TextField(blank=True)
+    fit_to_game_model = models.CharField(max_length=10, choices=FitLevel.choices, blank=True)
+    coach_trust_level = models.CharField(max_length=10, choices=TrustLevel.choices, blank=True)
+    leadership_level = models.CharField(max_length=10, choices=LeadershipLevel.choices, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "position_competitors"
+        ordering = ["hierarchy_order", "name", "id"]
+
+    def __str__(self):
+        return self.name
+
+
+class CompetitorComparison(models.Model):
+    class Criterion(models.TextChoices):
+        TECHNICAL = "technical", "Tecnico"
+        TACTICAL = "tactical", "Tatico"
+        PHYSICAL = "physical", "Fisico"
+        MENTAL = "mental", "Mental"
+        BEHAVIORAL = "behavioral", "Comportamental"
+        MATURITY = "maturity", "Maturidade competitiva"
+        GAME_MODEL_FIT = "game_model_fit", "Adequacao ao modelo"
+        COACH_TRUST = "coach_trust", "Confianca do treinador"
+
+    class Rating(models.TextChoices):
+        INFERIOR = "inferior", "Inferior"
+        SIMILAR = "similar", "Similar"
+        SUPERIOR = "superior", "Superior"
+
+    case = models.ForeignKey(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="comparisons")
+    competitor = models.ForeignKey(PositionCompetitor, on_delete=models.CASCADE, related_name="comparisons")
+    criterion = models.CharField(max_length=30, choices=Criterion.choices)
+    rating = models.CharField(max_length=10, choices=Rating.choices)
+    notes = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = "competitor_comparisons"
+        ordering = ["competitor__hierarchy_order", "criterion", "id"]
+        unique_together = ("competitor", "criterion")
+
+
+class CompetitiveDiagnosis(models.Model):
+    REASON_CHOICES = [
+        ("technical_gap", "Inferioridade tecnica"),
+        ("tactical_gap", "Inferioridade tatica"),
+        ("physical_gap", "Inferioridade fisica"),
+        ("intensity_gap", "Falta de intensidade"),
+        ("low_maturity", "Baixa maturidade"),
+        ("coach_prefers_experience", "Preferencia do treinador por experientes"),
+        ("hierarchy", "Hierarquia consolidada"),
+        ("game_model_fit", "Incompatibilidade com o modelo"),
+        ("injury_return", "Retorno de lesao"),
+        ("emotional", "Questoes emocionais"),
+        ("few_opportunities", "Poucas oportunidades"),
+        ("adaptation", "Adaptacao ao clube"),
+        ("other", "Outros"),
+    ]
+
+    case = models.OneToOneField(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="diagnosis")
+    main_reason = models.CharField(max_length=40, choices=REASON_CHOICES)
+    secondary_reasons = models.JSONField(default=list, blank=True)
+    contextual_reasons = models.JSONField(default=list, blank=True)
+    other_reason = models.CharField(max_length=255, blank=True)
+    summary = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "competitive_diagnoses"
+
+
+class CareerPrognosis(models.Model):
+    class Classification(models.TextChoices):
+        HIGH_CHANCE = "high_chance", "Alta chance de se tornar titular"
+        MODERATE = "moderate", "Chance moderada com desenvolvimento"
+        CONTEXT = "context", "Dependente do contexto"
+        HIERARCHY = "hierarchy", "Bloqueado por hierarquia"
+        UNLIKELY_SHORT = "unlikely_short", "Curto prazo improvavel"
+        CHANGE = "change", "Necessidade de mudanca de ambiente"
+
+    class Timeframe(models.TextChoices):
+        SHORT = "short", "Curto prazo"
+        MEDIUM = "medium", "Medio prazo"
+        LONG = "long", "Longo prazo"
+
+    case = models.OneToOneField(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="prognosis")
+    classification = models.CharField(max_length=20, choices=Classification.choices)
+    timeframe = models.CharField(max_length=10, choices=Timeframe.choices)
+    justification = models.TextField()
+
+    class Meta:
+        db_table = "career_prognoses"
+
+
+class IndividualDevelopmentPlan(models.Model):
+    case = models.OneToOneField(CareerIntelligenceCase, on_delete=models.CASCADE, related_name="development_plan_v2")
+    strengths_to_keep = models.TextField(blank=True)
+    short_term_priorities = models.TextField(blank=True)
+    medium_term_development = models.TextField(blank=True)
+    contextual_factors = models.TextField(blank=True)
+    mental_strategy = models.TextField(blank=True)
+    practical_strategy = models.TextField(blank=True)
+    priority_actions = models.JSONField(default=list, blank=True)
+    template_name = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        db_table = "individual_development_plans"

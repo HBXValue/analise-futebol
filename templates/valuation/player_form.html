@@ -6,8 +6,12 @@
         <div class="brand">HBX<small>{{ t.valuation_system }}</small></div>
         <div class="nav">
             <a href="{% url 'dashboard' %}">{{ t.dashboard }}</a>
-            <a class="active" href="{% url 'player-create' %}">{{ t.add_player }}</a>
-            <a href="{% url 'player-upload' %}">{{ t.upload_csv }}</a>
+            <a class="active" href="{% url 'player-create' %}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a href="{% url 'data' %}?lang={{ lang }}">Data</a>
             <a href="{% url 'logout' %}">{{ t.logout }}</a>
         </div>
         <div class="lang-switch">
@@ -17,6 +21,7 @@
         </div>
     </aside>
     <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
         <section class="hero-card">
             <span class="pill">{{ t.manual_data_entry }}</span>
             <h1>{{ page_title }}</h1>
@@ -25,53 +30,200 @@
         <section class="panel">
             <form method="post">
                 {% csrf_token %}
-                <h2 class="section-title">{{ t.player_profile }}</h2>
-                <div class="form-grid">
-                    {% for field in form %}
-                        {% if forloop.counter0 < 6 %}
-                            <div class="field-group">
-                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                {{ field }}
-                                {% if field.errors %}<small style="color: #ffd1d1;">{{ field.errors|join:", " }}</small>{% endif %}
-                            </div>
-                        {% endif %}
+                <datalist id="division-suggestions">
+                    {% for division in division_suggestions %}
+                        <option value="{{ division.short_name|default:division.name }}">{{ division.country.name }} | {{ division.name }}</option>
                     {% endfor %}
+                </datalist>
+                <datalist id="club-suggestions">
+                    {% for club in club_suggestions %}
+                        <option value="{{ club.short_name|default:club.official_name }}">{{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.official_name }}</option>
+                    {% endfor %}
+                </datalist>
+
+                <h2 class="section-title">{{ t.player_profile }}</h2>
+                <div class="panel" style="margin-bottom: 24px; padding: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Clube atual do atleta</h3>
+                    <p style="margin-top: 0; color: var(--muted);">
+                        Siga a ordem do cadastro: escolha o pais, depois a liga e por fim o clube. Quando concluir esses 3 passos, o sistema preenche os campos internos automaticamente.
+                    </p>
+                    <div class="form-grid">
+                        <div class="field-group">
+                            <label for="{{ form.country_code.id_for_label }}">Passo 1 · {{ form.country_code.label }}</label>
+                            {{ form.country_code }}
+                            {% if form.country_code.errors %}<small style="color: #ffd1d1;">{{ form.country_code.errors|join:", " }}</small>{% endif %}
+                        </div>
+                        <div class="field-group">
+                            <label for="division_lookup">Passo 2 · Liga</label>
+                            <select id="division_lookup" class="field-input" disabled>
+                                <option value="">Escolha primeiro o pais</option>
+                                {% for division in division_suggestions %}
+                                    <option
+                                        value="{{ division.short_name|default:division.name }}"
+                                        data-country="{{ division.country.code }}"
+                                        data-division-name="{{ division.name }}"
+                                    >
+                                        {{ division.country.name }} | {{ division.short_name|default:division.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small style="color: var(--muted);">A lista mostra apenas as ligas cadastradas para o pais selecionado.</small>
+                        </div>
+                        <div class="field-group">
+                            <label for="club_lookup">Passo 3 · Clube</label>
+                            <select id="club_lookup" class="field-input" disabled>
+                                <option value="">Escolha primeiro a liga</option>
+                                {% for club in club_suggestions %}
+                                    <option
+                                        value="{{ club.short_name|default:club.official_name }}"
+                                        data-country="{{ club.country.code }}"
+                                        data-division="{{ club.division.short_name|default:club.division.name }}"
+                                        data-club-name="{{ club.official_name }}"
+                                    >
+                                        {{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.short_name|default:club.official_name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small style="color: var(--muted);">Depois de selecionar o clube, voce pode seguir para a proxima parte do formulario.</small>
+                        </div>
+                    </div>
+                    <div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.08);">
+                        <strong style="display: block; margin-bottom: 6px;">Resumo da selecao</strong>
+                        <span id="club-selection-summary" style="color: var(--muted);">Nenhum pais, liga ou clube selecionado ainda.</span>
+                    </div>
+                    <details style="margin-top: 16px;">
+                        <summary style="cursor: pointer; color: var(--muted);">Nao encontrou a liga ou o clube?</summary>
+                        <div class="form-grid" style="margin-top: 16px;">
+                            <div class="field-group">
+                                <label for="{{ form.league_level.id_for_label }}">{{ form.league_level.label }}</label>
+                                {{ form.league_level }}
+                                {% if form.league_level.help_text %}<small style="color: var(--muted);">{{ form.league_level.help_text }}</small>{% endif %}
+                                {% if form.league_level.errors %}<small style="color: #ffd1d1;">{{ form.league_level.errors|join:", " }}</small>{% endif %}
+                            </div>
+                            <div class="field-group">
+                                <label for="{{ form.club_origin.id_for_label }}">{{ form.club_origin.label }}</label>
+                                {{ form.club_origin }}
+                                {% if form.club_origin.help_text %}<small style="color: var(--muted);">{{ form.club_origin.help_text }}</small>{% endif %}
+                                {% if form.club_origin.errors %}<small style="color: #ffd1d1;">{{ form.club_origin.errors|join:", " }}</small>{% endif %}
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                <div class="form-grid">
+                    <div class="field-group"><label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>{{ form.name }}{% if form.name.errors %}<small style="color: #ffd1d1;">{{ form.name.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.public_name.id_for_label }}">{{ form.public_name.label }}</label>{{ form.public_name }}{% if form.public_name.errors %}<small style="color: #ffd1d1;">{{ form.public_name.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.birth_date.id_for_label }}">{{ form.birth_date.label }}</label>{{ form.birth_date }}{% if form.birth_date.errors %}<small style="color: #ffd1d1;">{{ form.birth_date.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group">
+                        <label for="{{ form.age.id_for_label }}">{{ form.age.label }}</label>
+                        {{ form.age }}
+                        {% if form.age.help_text %}<small style="color: var(--muted);">{{ form.age.help_text }}</small>{% endif %}
+                        {% if form.age.errors %}<small style="color: #ffd1d1;">{{ form.age.errors|join:", " }}</small>{% endif %}
+                    </div>
+                    <div class="field-group"><label for="{{ form.nationality.id_for_label }}">{{ form.nationality.label }}</label>{{ form.nationality }}{% if form.nationality.errors %}<small style="color: #ffd1d1;">{{ form.nationality.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.position.id_for_label }}">{{ form.position.label }}</label>{{ form.position }}{% if form.position.errors %}<small style="color: #ffd1d1;">{{ form.position.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.secondary_positions.id_for_label }}">{{ form.secondary_positions.label }}</label>{{ form.secondary_positions }}{% if form.secondary_positions.errors %}<small style="color: #ffd1d1;">{{ form.secondary_positions.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.dominant_foot.id_for_label }}">{{ form.dominant_foot.label }}</label>{{ form.dominant_foot }}{% if form.dominant_foot.errors %}<small style="color: #ffd1d1;">{{ form.dominant_foot.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.height_cm.id_for_label }}">{{ form.height_cm.label }}</label>{{ form.height_cm }}{% if form.height_cm.errors %}<small style="color: #ffd1d1;">{{ form.height_cm.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.weight_kg.id_for_label }}">{{ form.weight_kg.label }}</label>{{ form.weight_kg }}{% if form.weight_kg.errors %}<small style="color: #ffd1d1;">{{ form.weight_kg.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.current_value.id_for_label }}">{{ form.current_value.label }}</label>{{ form.current_value }}{% if form.current_value.errors %}<small style="color: #ffd1d1;">{{ form.current_value.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.category.id_for_label }}">{{ form.category.label }}</label>{{ form.category }}{% if form.category.errors %}<small style="color: #ffd1d1;">{{ form.category.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.contract_months_remaining.id_for_label }}">{{ form.contract_months_remaining.label }}</label>{{ form.contract_months_remaining }}{% if form.contract_months_remaining.errors %}<small style="color: #ffd1d1;">{{ form.contract_months_remaining.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.squad_status.id_for_label }}">{{ form.squad_status.label }}</label>{{ form.squad_status }}{% if form.squad_status.errors %}<small style="color: #ffd1d1;">{{ form.squad_status.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.athlete_objectives.id_for_label }}">{{ form.athlete_objectives.label }}</label>{{ form.athlete_objectives }}{% if form.athlete_objectives.errors %}<small style="color: #ffd1d1;">{{ form.athlete_objectives.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group">
+                        <label for="{{ form.training_environment_score.id_for_label }}">{{ form.training_environment_score.label }}</label>
+                        {{ form.training_environment_score }}
+                        {% if form.training_environment_score.help_text %}<small style="color: var(--muted);">{{ form.training_environment_score.help_text }}</small>{% endif %}
+                        {% if form.training_environment_score.errors %}<small style="color: #ffd1d1;">{{ form.training_environment_score.errors|join:", " }}</small>{% endif %}
+                    </div>
+                    <div class="field-group">
+                        <label for="{{ form.trajectory_score.id_for_label }}">{{ form.trajectory_score.label }}</label>
+                        {{ form.trajectory_score }}
+                        {% if form.trajectory_score.help_text %}<small style="color: var(--muted);">{{ form.trajectory_score.help_text }}</small>{% endif %}
+                        {% if form.trajectory_score.errors %}<small style="color: #ffd1d1;">{{ form.trajectory_score.errors|join:", " }}</small>{% endif %}
+                    </div>
+                    <div class="field-group" style="grid-column: 1 / -1;"><label for="{{ form.profile_notes.id_for_label }}">{{ form.profile_notes.label }}</label>{{ form.profile_notes }}{% if form.profile_notes.errors %}<small style="color: #ffd1d1;">{{ form.profile_notes.errors|join:", " }}</small>{% endif %}</div>
                 </div>
 
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.performance_metrics }}</h2>
                 <div class="form-grid">
-                    {% for field in form %}
-                        {% if forloop.counter0 >= 6 and forloop.counter0 < 13 %}
-                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
-                        {% endif %}
-                    {% endfor %}
+                    <div class="field-group"><label for="{{ form.xg.id_for_label }}">{{ form.xg.label }}</label>{{ form.xg }}{% if form.xg.errors %}<small style="color: #ffd1d1;">{{ form.xg.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.xa.id_for_label }}">{{ form.xa.label }}</label>{{ form.xa }}{% if form.xa.errors %}<small style="color: #ffd1d1;">{{ form.xa.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.passes_pct.id_for_label }}">{{ form.passes_pct.label }}</label>{{ form.passes_pct }}{% if form.passes_pct.errors %}<small style="color: #ffd1d1;">{{ form.passes_pct.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.dribbles_pct.id_for_label }}">{{ form.dribbles_pct.label }}</label>{{ form.dribbles_pct }}{% if form.dribbles_pct.errors %}<small style="color: #ffd1d1;">{{ form.dribbles_pct.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.tackles_pct.id_for_label }}">{{ form.tackles_pct.label }}</label>{{ form.tackles_pct }}{% if form.tackles_pct.errors %}<small style="color: #ffd1d1;">{{ form.tackles_pct.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.high_intensity_distance.id_for_label }}">{{ form.high_intensity_distance.label }}</label>{{ form.high_intensity_distance }}{% if form.high_intensity_distance.errors %}<small style="color: #ffd1d1;">{{ form.high_intensity_distance.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.final_third_recoveries.id_for_label }}">{{ form.final_third_recoveries.label }}</label>{{ form.final_third_recoveries }}{% if form.final_third_recoveries.errors %}<small style="color: #ffd1d1;">{{ form.final_third_recoveries.errors|join:", " }}</small>{% endif %}</div>
                 </div>
 
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.market_metrics }}</h2>
                 <div class="form-grid">
-                    {% for field in form %}
-                        {% if forloop.counter0 >= 13 and forloop.counter0 < 18 %}
-                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
-                        {% endif %}
-                    {% endfor %}
+                    <div class="field-group"><label for="{{ form.annual_growth.id_for_label }}">{{ form.annual_growth.label }}</label>{{ form.annual_growth }}{% if form.annual_growth.errors %}<small style="color: #ffd1d1;">{{ form.annual_growth.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.club_interest.id_for_label }}">{{ form.club_interest.label }}</label>{{ form.club_interest }}{% if form.club_interest.errors %}<small style="color: #ffd1d1;">{{ form.club_interest.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.league_score.id_for_label }}">{{ form.league_score.label }}</label>{{ form.league_score }}{% if form.league_score.errors %}<small style="color: #ffd1d1;">{{ form.league_score.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.age_factor.id_for_label }}">{{ form.age_factor.label }}</label>{{ form.age_factor }}{% if form.age_factor.errors %}<small style="color: #ffd1d1;">{{ form.age_factor.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.club_reputation.id_for_label }}">{{ form.club_reputation.label }}</label>{{ form.club_reputation }}{% if form.club_reputation.errors %}<small style="color: #ffd1d1;">{{ form.club_reputation.errors|join:", " }}</small>{% endif %}</div>
                 </div>
 
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.marketing_metrics }}</h2>
+                <p style="color: var(--muted); margin-top: 0;">
+                    Cadastre os identificadores publicos do atleta e os sinais coletados por rede. Essa base fortalece o perfil do novo jogador e deixa os dados prontos para uso posterior nas demais analises do sistema.
+                </p>
+
+                <h3 class="section-title" style="margin-top: 24px; font-size: 1rem;">Identidade publica</h3>
                 <div class="form-grid">
-                    {% for field in form %}
-                        {% if forloop.counter0 >= 18 and forloop.counter0 < 23 %}
-                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
-                        {% endif %}
-                    {% endfor %}
+                    <div class="field-group"><label for="{{ form.instagram_handle.id_for_label }}">{{ form.instagram_handle.label }}</label>{{ form.instagram_handle }}{% if form.instagram_handle.errors %}<small style="color: #ffd1d1;">{{ form.instagram_handle.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.tiktok_handle.id_for_label }}">{{ form.tiktok_handle.label }}</label>{{ form.tiktok_handle }}{% if form.tiktok_handle.errors %}<small style="color: #ffd1d1;">{{ form.tiktok_handle.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.x_handle.id_for_label }}">{{ form.x_handle.label }}</label>{{ form.x_handle }}{% if form.x_handle.errors %}<small style="color: #ffd1d1;">{{ form.x_handle.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.google_news_query.id_for_label }}">{{ form.google_news_query.label }}</label>{{ form.google_news_query }}{% if form.google_news_query.errors %}<small style="color: #ffd1d1;">{{ form.google_news_query.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.youtube_query.id_for_label }}">{{ form.youtube_query.label }}</label>{{ form.youtube_query }}{% if form.youtube_query.errors %}<small style="color: #ffd1d1;">{{ form.youtube_query.errors|join:", " }}</small>{% endif %}</div>
+                </div>
+
+                <h3 class="section-title" style="margin-top: 24px; font-size: 1rem;">Instagram</h3>
+                <div class="form-grid">
+                    <div class="field-group"><label for="{{ form.instagram_followers.id_for_label }}">{{ form.instagram_followers.label }}</label>{{ form.instagram_followers }}{% if form.instagram_followers.errors %}<small style="color: #ffd1d1;">{{ form.instagram_followers.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.instagram_engagement.id_for_label }}">{{ form.instagram_engagement.label }}</label>{{ form.instagram_engagement }}{% if form.instagram_engagement.errors %}<small style="color: #ffd1d1;">{{ form.instagram_engagement.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.instagram_posts.id_for_label }}">{{ form.instagram_posts.label }}</label>{{ form.instagram_posts }}{% if form.instagram_posts.errors %}<small style="color: #ffd1d1;">{{ form.instagram_posts.errors|join:", " }}</small>{% endif %}</div>
+                </div>
+
+                <h3 class="section-title" style="margin-top: 24px; font-size: 1rem;">TikTok</h3>
+                <div class="form-grid">
+                    <div class="field-group"><label for="{{ form.tiktok_followers.id_for_label }}">{{ form.tiktok_followers.label }}</label>{{ form.tiktok_followers }}{% if form.tiktok_followers.errors %}<small style="color: #ffd1d1;">{{ form.tiktok_followers.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.tiktok_engagement.id_for_label }}">{{ form.tiktok_engagement.label }}</label>{{ form.tiktok_engagement }}{% if form.tiktok_engagement.errors %}<small style="color: #ffd1d1;">{{ form.tiktok_engagement.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.tiktok_posts.id_for_label }}">{{ form.tiktok_posts.label }}</label>{{ form.tiktok_posts }}{% if form.tiktok_posts.errors %}<small style="color: #ffd1d1;">{{ form.tiktok_posts.errors|join:", " }}</small>{% endif %}</div>
+                </div>
+
+                <h3 class="section-title" style="margin-top: 24px; font-size: 1rem;">X / Twitter</h3>
+                <div class="form-grid">
+                    <div class="field-group"><label for="{{ form.x_followers.id_for_label }}">{{ form.x_followers.label }}</label>{{ form.x_followers }}{% if form.x_followers.errors %}<small style="color: #ffd1d1;">{{ form.x_followers.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.x_engagement.id_for_label }}">{{ form.x_engagement.label }}</label>{{ form.x_engagement }}{% if form.x_engagement.errors %}<small style="color: #ffd1d1;">{{ form.x_engagement.errors|join:", " }}</small>{% endif %}</div>
+                </div>
+
+                <h3 class="section-title" style="margin-top: 24px; font-size: 1rem;">YouTube</h3>
+                <div class="form-grid">
+                    <div class="field-group"><label for="{{ form.youtube_subscribers.id_for_label }}">{{ form.youtube_subscribers.label }}</label>{{ form.youtube_subscribers }}{% if form.youtube_subscribers.errors %}<small style="color: #ffd1d1;">{{ form.youtube_subscribers.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.youtube_avg_views.id_for_label }}">{{ form.youtube_avg_views.label }}</label>{{ form.youtube_avg_views }}{% if form.youtube_avg_views.errors %}<small style="color: #ffd1d1;">{{ form.youtube_avg_views.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.youtube_videos.id_for_label }}">{{ form.youtube_videos.label }}</label>{{ form.youtube_videos }}{% if form.youtube_videos.errors %}<small style="color: #ffd1d1;">{{ form.youtube_videos.errors|join:", " }}</small>{% endif %}</div>
+                </div>
+
+                <h3 class="section-title" style="margin-top: 24px; font-size: 1rem;">Consolidado de marketing</h3>
+                <div class="form-grid">
+                    <div class="field-group"><label for="{{ form.followers.id_for_label }}">{{ form.followers.label }}</label>{{ form.followers }}{% if form.followers.errors %}<small style="color: #ffd1d1;">{{ form.followers.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.engagement.id_for_label }}">{{ form.engagement.label }}</label>{{ form.engagement }}{% if form.engagement.errors %}<small style="color: #ffd1d1;">{{ form.engagement.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.media_mentions.id_for_label }}">{{ form.media_mentions.label }}</label>{{ form.media_mentions }}{% if form.media_mentions.errors %}<small style="color: #ffd1d1;">{{ form.media_mentions.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.sponsorships.id_for_label }}">{{ form.sponsorships.label }}</label>{{ form.sponsorships }}{% if form.sponsorships.errors %}<small style="color: #ffd1d1;">{{ form.sponsorships.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.sentiment_score.id_for_label }}">{{ form.sentiment_score.label }}</label>{{ form.sentiment_score }}{% if form.sentiment_score.errors %}<small style="color: #ffd1d1;">{{ form.sentiment_score.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group" style="grid-column: 1 / -1;"><label for="{{ form.collection_notes.id_for_label }}">{{ form.collection_notes.label }}</label>{{ form.collection_notes }}{% if form.collection_notes.errors %}<small style="color: #ffd1d1;">{{ form.collection_notes.errors|join:", " }}</small>{% endif %}</div>
                 </div>
 
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.behavior_metrics }}</h2>
                 <div class="form-grid">
-                    {% for field in form %}
-                        {% if forloop.counter0 >= 23 %}
-                            <div class="field-group"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}</div>
-                        {% endif %}
-                    {% endfor %}
+                    <div class="field-group"><label for="{{ form.conscientiousness.id_for_label }}">{{ form.conscientiousness.label }}</label>{{ form.conscientiousness }}{% if form.conscientiousness.errors %}<small style="color: #ffd1d1;">{{ form.conscientiousness.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.adaptability.id_for_label }}">{{ form.adaptability.label }}</label>{{ form.adaptability }}{% if form.adaptability.errors %}<small style="color: #ffd1d1;">{{ form.adaptability.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.resilience.id_for_label }}">{{ form.resilience.label }}</label>{{ form.resilience }}{% if form.resilience.errors %}<small style="color: #ffd1d1;">{{ form.resilience.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.deliberate_practice.id_for_label }}">{{ form.deliberate_practice.label }}</label>{{ form.deliberate_practice }}{% if form.deliberate_practice.errors %}<small style="color: #ffd1d1;">{{ form.deliberate_practice.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.executive_function.id_for_label }}">{{ form.executive_function.label }}</label>{{ form.executive_function }}{% if form.executive_function.errors %}<small style="color: #ffd1d1;">{{ form.executive_function.errors|join:", " }}</small>{% endif %}</div>
+                    <div class="field-group"><label for="{{ form.leadership.id_for_label }}">{{ form.leadership.label }}</label>{{ form.leadership }}{% if form.leadership.errors %}<small style="color: #ffd1d1;">{{ form.leadership.errors|join:", " }}</small>{% endif %}</div>
                 </div>
 
                 <div class="actions">
@@ -85,4 +237,137 @@
         </section>
     </main>
 </div>
+<script>
+(() => {
+    const birthDateField = document.getElementById("{{ form.birth_date.id_for_label }}");
+    const ageField = document.getElementById("{{ form.age.id_for_label }}");
+    if (!birthDateField || !ageField) return;
+
+    const updateAge = () => {
+        if (!birthDateField.value) {
+            ageField.value = "";
+            return;
+        }
+        const birthDate = new Date(birthDateField.value + "T00:00:00");
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        const dayDiff = today.getDate() - birthDate.getDate();
+        if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+            age -= 1;
+        }
+        ageField.value = age >= 0 ? age : "";
+    };
+
+    birthDateField.addEventListener("change", updateAge);
+    birthDateField.addEventListener("input", updateAge);
+    updateAge();
+})();
+
+(() => {
+    const countryField = document.getElementById("{{ form.country_code.id_for_label }}");
+    const divisionField = document.getElementById("{{ form.league_level.id_for_label }}");
+    const clubField = document.getElementById("{{ form.club_origin.id_for_label }}");
+    const divisionLookup = document.getElementById("division_lookup");
+    const clubLookup = document.getElementById("club_lookup");
+    const summaryField = document.getElementById("club-selection-summary");
+    if (!countryField || !divisionField || !clubField || !divisionLookup || !clubLookup || !summaryField) return;
+
+    const divisionOptions = Array.from(divisionLookup.querySelectorAll("option[data-country]"));
+    const clubOptions = Array.from(clubLookup.querySelectorAll("option[data-country]"));
+
+    const normalize = (value) => (value || "").toString().trim().toLowerCase();
+
+    const getSelectedCountryLabel = () => {
+        const option = countryField.options[countryField.selectedIndex];
+        return option ? option.text.trim() : "";
+    };
+
+    const updateSummary = () => {
+        const countryLabel = getSelectedCountryLabel();
+        const divisionLabel = divisionField.value || "Liga nao selecionada";
+        const clubLabel = clubField.value || "Clube nao selecionado";
+
+        if (!countryField.value && !divisionField.value && !clubField.value) {
+            summaryField.textContent = "Nenhum pais, liga ou clube selecionado ainda.";
+            return;
+        }
+
+        summaryField.textContent = `${countryLabel || "Pais nao selecionado"} -> ${divisionLabel} -> ${clubLabel}`;
+    };
+
+    const rebuildDivisionOptions = () => {
+        const selectedCountry = countryField.value;
+        const currentDivision = divisionField.value;
+        divisionLookup.disabled = !selectedCountry;
+        divisionLookup.options[0].text = selectedCountry ? "Selecione uma liga" : "Escolha primeiro o pais";
+        divisionOptions.forEach((option) => {
+            option.hidden = !!selectedCountry && option.dataset.country !== selectedCountry;
+        });
+        const matchedDivision = divisionOptions.find((option) => !option.hidden && (
+            normalize(option.value) === normalize(currentDivision) ||
+            normalize(option.dataset.divisionName) === normalize(currentDivision)
+        ));
+        divisionLookup.value = matchedDivision ? matchedDivision.value : "";
+    };
+
+    const rebuildClubOptions = () => {
+        const selectedCountry = countryField.value;
+        const selectedDivision = divisionField.value;
+        const currentClub = clubField.value;
+        clubLookup.disabled = !selectedCountry || !selectedDivision;
+        clubLookup.options[0].text = selectedDivision ? "Selecione um clube" : "Escolha primeiro a liga";
+        clubOptions.forEach((option) => {
+            const countryMatches = !selectedCountry || option.dataset.country === selectedCountry;
+            const divisionMatches = !selectedDivision || normalize(option.dataset.division) === normalize(selectedDivision);
+            option.hidden = !(countryMatches && divisionMatches);
+        });
+        const matchedClub = clubOptions.find((option) => !option.hidden && (
+            normalize(option.value) === normalize(currentClub) ||
+            normalize(option.dataset.clubName) === normalize(currentClub)
+        ));
+        clubLookup.value = matchedClub ? matchedClub.value : "";
+        updateSummary();
+    };
+
+    countryField.addEventListener("change", () => {
+        divisionField.value = "";
+        clubField.value = "";
+        divisionLookup.value = "";
+        clubLookup.value = "";
+        rebuildDivisionOptions();
+        rebuildClubOptions();
+        updateSummary();
+    });
+
+    divisionLookup.addEventListener("change", () => {
+        divisionField.value = divisionLookup.value || "";
+        clubField.value = "";
+        clubLookup.value = "";
+        rebuildClubOptions();
+        updateSummary();
+    });
+
+    divisionField.addEventListener("change", () => {
+        rebuildClubOptions();
+        updateSummary();
+    });
+    divisionField.addEventListener("input", () => {
+        rebuildClubOptions();
+        updateSummary();
+    });
+
+    clubLookup.addEventListener("change", () => {
+        clubField.value = clubLookup.value || "";
+        updateSummary();
+    });
+
+    clubField.addEventListener("change", updateSummary);
+    clubField.addEventListener("input", updateSummary);
+
+    rebuildDivisionOptions();
+    rebuildClubOptions();
+    updateSummary();
+})();
+</script>
 {% endblock %}

@@ -1,0 +1,234 @@
+{% extends "valuation/base.html" %}
+{% block title %}{{ section_title }} | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>Performance Intelligence</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}?lang={{ lang }}">{{ t.dashboard }}</a>
+            <a href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a href="{% url 'data' %}?lang={{ lang }}">Data</a>
+            {% if case %}
+                {% for item in step_links %}
+                    <a class="{% if item.active %}active{% endif %}" href="{% url 'career-case-step' case.id item.key %}?lang={{ lang }}">{{ item.label }}</a>
+                {% endfor %}
+            {% endif %}
+        </div>
+        <div class="meta">
+            <strong>{% if case %}{{ case.athlete_name }}{% else %}{{ t.career_new_case }}{% endif %}</strong>
+            <p>{% if case %}{{ case.current_club|default:t.career_club_not_informed }}{% else %}{{ t.career_sequential_flow }}{% endif %}</p>
+        </div>
+        <div class="lang-switch">
+            {% for code, label in languages.items %}
+                <a class="{% if code == lang %}active{% endif %}" href="?lang={{ code }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+        {% if case %}
+        <div class="meta">
+            <strong>{{ t.career_fill_status }}</strong>
+            <div class="progress-stack">
+                {% for key, ready in completion.items %}
+                    <div class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">{{ key|title }}</div>
+                            <div class="badge">{% if ready %}OK{% else %}Pendente{% endif %}</div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </aside>
+
+    <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <section class="hero-card">
+            <span class="pill">{{ t.career_flow }}</span>
+            <h1>{{ section_title }}</h1>
+            <p>{{ t.career_fill_step_text }}</p>
+            {% if case %}
+            <div class="actions">
+                <a class="button button-secondary" href="{% url 'career-case-step' case.id 'report' %}?lang={{ lang }}">{{ t.career_go_report }}</a>
+                <a class="button button-secondary" href="{% url 'career-case-list' %}?lang={{ lang }}">{{ t.career_back_to_list }}</a>
+            </div>
+            {% endif %}
+        </section>
+
+        {% if form %}
+            <section class="panel">
+                {% if step == 'development' %}
+                    <p style="margin-top: 0; color: var(--muted);">{{ t.career_ai_plan_hint }}</p>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="form-grid">
+                        {% for field in form %}
+                            <div class="field-group" style="{% if field.field.widget.input_type == 'textarea' %}grid-column: 1 / -1;{% endif %}">
+                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <span style="color: var(--muted); font-size: 0.9rem;">{{ field.help_text }}</span>
+                                {% endif %}
+                                {% for error in field.errors %}
+                                    <span style="color: #ffd1d1;">{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% if form.non_field_errors %}
+                        <div class="message error" style="margin-top: 16px;">{{ form.non_field_errors }}</div>
+                    {% endif %}
+                    <div class="actions">
+                        {% if step == 'development' %}
+                            <button class="button button-secondary" type="submit" name="action" value="generate_ai_plan">{{ t.career_generate_ai_plan }}</button>
+                        {% endif %}
+                        <button class="button button-primary" type="submit">{{ submit_label }}</button>
+                    </div>
+                </form>
+            </section>
+        {% endif %}
+
+        {% if step == 'competition' %}
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.career_register_competitor }}</h2>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add_competitor">
+                        <div class="form-grid">
+                            {% for field in competitor_form %}
+                                <div class="field-group">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                    {% for error in field.errors %}
+                                        <span style="color: #ffd1d1;">{{ error }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.career_add_competitor }}</button>
+                        </div>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>{{ t.career_register_comparison }}</h2>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="add_comparison">
+                        <div class="form-grid">
+                            {% for field in comparison_form %}
+                                <div class="field-group">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                    {% for error in field.errors %}
+                                        <span style="color: #ffd1d1;">{{ error }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit">{{ t.career_save_comparison }}</button>
+                            <button class="button button-secondary" type="submit" name="action" value="continue">{{ t.career_continue_flow }}</button>
+                        </div>
+                    </form>
+                </article>
+            </section>
+
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.career_registered_competitors }}</h2>
+                    <table class="player-table">
+                        <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Posicao</th>
+                            <th>Hierarquia</th>
+                            <th>Minutos</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for competitor in competitors %}
+                            <tr>
+                                <td>{{ competitor.name }}</td>
+                                <td>{{ competitor.position }}</td>
+                                <td>{{ competitor.hierarchy_order }}</td>
+                                <td>{{ competitor.minutes_played }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="4">{{ t.career_no_competitors }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </article>
+                <article class="panel">
+                    <h2>{{ t.career_comparison_matrix }}</h2>
+                    {% for row in comparison_rows %}
+                        <div class="progress-card" style="margin-bottom: 12px;">
+                            <strong>{{ row.competitor.name }}</strong>
+                            <ul style="color: var(--muted); line-height: 1.7;">
+                                {% for item in row.items %}
+                                    {% if item %}
+                                        <li>{{ item.get_criterion_display }}: {{ item.get_rating_display }}</li>
+                                    {% endif %}
+                                {% empty %}
+                                    <li>Nenhuma comparacao registrada.</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% empty %}
+                        <p>{{ t.career_no_comparisons }}</p>
+                    {% endfor %}
+                </article>
+            </section>
+        {% endif %}
+
+        {% if step == 'report' and case %}
+            <section class="grid chart-grid">
+                <article class="panel">
+                    <h2>{{ t.career_executive_summary }}</h2>
+                    <table class="player-table">
+                        <tbody>
+                        <tr><td>Atleta</td><td>{{ case.athlete_name }}</td></tr>
+                        <tr><td>Posicao</td><td>{{ case.position_primary|default:"-" }}</td></tr>
+                        <tr><td>Clube</td><td>{{ case.current_club|default:"-" }}</td></tr>
+                        <tr><td>Status no elenco</td><td>{{ localized_squad_status|default:"-" }}</td></tr>
+                        <tr><td>{{ t.career_report_ready }}</td><td>{% if report_ready %}{{ t.career_yes }}{% else %}{{ t.career_no }}{% endif %}</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="actions">
+                        <form method="post">
+                            {% csrf_token %}
+                            <button class="button button-primary" type="submit">{{ t.career_consolidate_report }}</button>
+                        </form>
+                        <a class="button button-secondary" href="{% url 'career-case-report-pdf' case.id %}?lang={{ lang }}">{{ t.career_export_pdf }}</a>
+                    </div>
+                </article>
+                <article class="panel">
+                    <h2>{{ t.career_required_blocks }}</h2>
+                    <ul style="color: var(--muted); line-height: 1.8;">
+                        <li>Perfil do atleta preenchido</li>
+                        <li>Clube, treinador e modelo de jogo vinculados</li>
+                        <li>Ao menos um concorrente cadastrado</li>
+                        <li>Diagnostico com motivo principal</li>
+                        <li>Prognostico com justificativa</li>
+                        <li>Plano com minimo de 3 acoes prioritarias</li>
+                    </ul>
+                </article>
+            </section>
+        {% endif %}
+    </main>
+</div>
+{% endblock %}

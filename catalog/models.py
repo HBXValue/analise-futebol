@@ -24,6 +24,11 @@ class Country(TimeStampedModel, SluggedModel):
 
 
 class Division(TimeStampedModel, SluggedModel):
+    class Scope(models.TextChoices):
+        NATIONAL = "national", "Nacional"
+        STATE = "state", "Estadual"
+        OTHER = "other", "Outra"
+
     country = models.ForeignKey(
         Country,
         on_delete=models.PROTECT,
@@ -32,7 +37,14 @@ class Division(TimeStampedModel, SluggedModel):
     )
     name = models.CharField(max_length=120, verbose_name="nome")
     short_name = models.CharField(max_length=30, blank=True, verbose_name="nome curto")
-    level = models.PositiveSmallIntegerField(verbose_name="nível")
+    scope = models.CharField(
+        max_length=12,
+        choices=Scope.choices,
+        default=Scope.NATIONAL,
+        verbose_name="escopo",
+    )
+    state = models.CharField(max_length=120, blank=True, verbose_name="estado")
+    level = models.PositiveSmallIntegerField(blank=True, null=True, verbose_name="nível")
     alternative_names = models.CharField(
         max_length=255,
         blank=True,
@@ -44,19 +56,16 @@ class Division(TimeStampedModel, SluggedModel):
     class Meta:
         verbose_name = "divisão"
         verbose_name_plural = "divisões"
-        ordering = ["country__name", "level", "name"]
+        ordering = ["country__name", "scope", "state", "level", "name"]
         constraints = [
             models.UniqueConstraint(
-                fields=["country", "name"],
-                name="unique_division_name_per_country",
-            ),
-            models.UniqueConstraint(
-                fields=["country", "level"],
-                name="unique_division_level_per_country",
+                fields=["country", "scope", "state", "name"],
+                name="unique_division_name_per_country_scope_state",
             ),
         ]
 
     def __str__(self):
+        suffix = f" ({self.state})" if self.state else ""
         if self.short_name:
-            return f"{self.country.code} - {self.short_name}"
-        return f"{self.country.code} - {self.name}"
+            return f"{self.country.code} - {self.short_name}{suffix}"
+        return f"{self.country.code} - {self.name}{suffix}"

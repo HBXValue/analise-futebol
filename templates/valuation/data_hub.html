@@ -1,0 +1,62 @@
+{% extends "valuation/base.html" %}
+{% block title %}Data | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>Data</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}?lang={{ lang }}">Dashboard</a>
+            <a href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a class="active" href="{% url 'data' %}?lang={{ lang }}">Data</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
+        <section class="hero-card">
+            <span class="pill">Data</span>
+            <h1>Operação de dados e integrações</h1>
+            <p>Concentre aqui as rotinas operacionais do sistema: importação, template, base estrutural e evolução do acervo de dados.</p>
+            <div class="actions">
+                <a class="button button-primary" href="{% url 'player-upload' %}?lang={{ lang }}">Importar CSV</a>
+                <a class="button button-secondary" href="{% url 'player-template' %}?lang={{ lang }}">Baixar template</a>
+            </div>
+        </section>
+
+        <section class="grid stats-grid">
+            <article class="stat-card">
+                <span>Divisões ativas</span>
+                <strong>{{ division_count }}</strong>
+            </article>
+            <article class="stat-card">
+                <span>Clubes ativos</span>
+                <strong>{{ club_count }}</strong>
+            </article>
+            <article class="stat-card">
+                <span>Athletes no workspace</span>
+                <strong>{{ athlete_count }}</strong>
+            </article>
+        </section>
+
+        <section class="grid chart-grid">
+            <article class="panel">
+                <h2>Fluxo operacional</h2>
+                <p>Use esta área para manter a base preparada antes da inteligência. O objetivo é separar atividades operacionais do fluxo principal de análise e tomada de decisão.</p>
+            </article>
+            <article class="panel">
+                <h2>Próximas integrações</h2>
+                <p>Este módulo é o ponto natural para receber conectores de fontes externas, automação de ingestão e governança da base de atletas, clubes e competições.</p>
+            </article>
+        </section>
+    </main>
+</div>
+{% endblock %}

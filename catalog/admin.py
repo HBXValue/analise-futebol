@@ -13,8 +13,8 @@ class CountryAdmin(admin.ModelAdmin):
 
 @admin.register(Division)
 class DivisionAdmin(admin.ModelAdmin):
-    list_display = ("name", "short_name", "country", "level", "is_active")
-    list_filter = ("country", "level", "is_active")
+    list_display = ("name", "short_name", "country", "scope", "state", "level", "is_active")
+    list_filter = ("country", "scope", "state", "level", "is_active")
     search_fields = ("name", "short_name", "alternative_names", "country__name", "slug")
     autocomplete_fields = ("country",)
     prepopulated_fields = {"slug": ("name",)}

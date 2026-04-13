@@ -1,0 +1,232 @@
+{% extends "valuation/base.html" %}
+{% block title %}Performance Intelligence | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>Performance Intelligence</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}?lang={{ lang }}">{{ t.dashboard }}</a>
+            <a href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a class="active" href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a href="{% url 'data' %}?lang={{ lang }}">Data</a>
+            <a href="{% url 'career-case-create' %}?lang={{ lang }}">{{ t.career_case_new }}</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="meta">
+            <strong>{{ current_user.email }}</strong>
+            <span style="color: var(--muted);">{{ t.private_workspace }}</span>
+        </div>
+        <div class="lang-switch">
+            {% for code, label in languages.items %}
+                <a class="{% if code == lang %}active{% endif %}" href="?lang={{ code }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        <section class="hero-card">
+            <span class="pill">{{ t.career_module_badge }}</span>
+            <h1>{{ t.career_module_title }}</h1>
+            <p>{{ t.career_module_text }}</p>
+            <div class="actions">
+                <a class="button button-primary" href="{% url 'career-case-create' %}?lang={{ lang }}">{{ t.career_create_case }}</a>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Buscar caso</h2>
+            <div style="margin-bottom: 18px;">
+                <strong style="display: block; margin-bottom: 6px;">Contexto da analise</strong>
+                <p style="margin: 0; color: var(--muted);">Escolha o pais, depois a liga e por fim o clube. Em seguida busque o atleta para localizar o caso certo com mais rapidez.</p>
+            </div>
+            <div class="form-grid">
+                <div class="field-group">
+                    <label for="case-country-filter">Passo 1 · Pais</label>
+                    <select id="case-country-filter" class="field-input">
+                        <option value="">Escolha um pais</option>
+                        {% for country in countries %}
+                            <option value="{{ country.code }}">{{ country.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label for="case-division-filter">Passo 2 · Liga</label>
+                    <select id="case-division-filter" class="field-input" disabled>
+                        <option value="">Escolha primeiro o pais</option>
+                        {% for division in division_suggestions %}
+                            <option value="{{ division.short_name|default:division.name }}" data-country="{{ division.country.code }}">
+                                {{ division.country.name }} | {{ division.short_name|default:division.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label for="case-club-filter">Passo 3 · Clube</label>
+                    <select id="case-club-filter" class="field-input" disabled>
+                        <option value="">Escolha primeiro a liga</option>
+                        {% for club in club_suggestions %}
+                            <option value="{{ club.short_name|default:club.official_name }}" data-country="{{ club.country.code }}" data-division="{{ club.division.short_name|default:club.division.name }}">
+                                {{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.short_name|default:club.official_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="grid-column: 1 / -1; padding: 14px 16px; border-radius: 14px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <strong style="display: block; margin-bottom: 6px;">Resumo do contexto</strong>
+                    <span id="performance-context-summary" style="color: var(--muted);">Nenhum pais, liga ou clube selecionado ainda.</span>
+                </div>
+                <div class="field-group">
+                    <label for="case-search">Passo 4 · Buscar atleta</label>
+                    <input id="case-search" class="field-input" type="text" placeholder="Digite nome do atleta">
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>{{ t.career_cases_in_progress }}</h2>
+            <table class="player-table">
+                <thead>
+                <tr>
+                    <th>{{ t.career_athlete }}</th>
+                    <th>{{ t.career_club }}</th>
+                    <th>{{ t.career_current_step }}</th>
+                    <th>{{ t.career_updated_at }}</th>
+                    <th>{{ t.career_action }}</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in case_rows %}
+                    {% with case=row.case %}
+                    <tr
+                        data-country="{% if case.player_id and case.player.division_reference_id %}{{ case.player.division_reference.country.code }}{% endif %}"
+                        data-division="{% if case.player_id and case.player.division_reference_id %}{{ case.player.division_reference.short_name|default:case.player.league_level }}{% endif %}"
+                        data-club="{% if case.player_id and case.player.club_reference_id %}{{ case.player.club_reference.short_name|default:case.current_club }}{% else %}{{ case.current_club|default:'' }}{% endif %}"
+                        data-athlete="{{ case.athlete_name }}"
+                    >
+                        <td>
+                            <strong>{{ case.athlete_name }}</strong><br>
+                            <span style="color: var(--muted);">{{ case.position_primary|default:"-" }}</span>
+                        </td>
+                        <td>{{ case.current_club|default:"-" }}</td>
+                        <td>{{ row.step_label }}</td>
+                        <td>{{ case.updated_at|date:"d/m/Y H:i" }}</td>
+                        <td>
+                            <a class="button button-secondary" href="{% url 'career-case-step' case.id case.current_step %}?lang={{ lang }}">{{ t.career_continue }}</a>
+                            {% if case.player_id %}
+                                <a class="button button-secondary" href="{% url 'live-analysis' %}?player={{ case.player_id }}&lang={{ lang }}">Modo de analise</a>
+                            {% endif %}
+                            <a class="button button-primary" href="{% url 'career-case-step' case.id 'report' %}?lang={{ lang }}">{{ t.career_report }}</a>
+                        </td>
+                    </tr>
+                    {% endwith %}
+                {% empty %}
+                    <tr>
+                        <td colspan="5">{{ t.career_no_cases }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+</div>
+<script>
+(() => {
+    const normalize = (value) => (value || "").toString().trim().toLowerCase();
+    const countryFilter = document.getElementById("case-country-filter");
+    const divisionFilter = document.getElementById("case-division-filter");
+    const clubFilter = document.getElementById("case-club-filter");
+    const searchField = document.getElementById("case-search");
+    const rows = Array.from(document.querySelectorAll(".player-table tbody tr[data-athlete]"));
+    if (!countryFilter || !divisionFilter || !clubFilter || !searchField || !rows.length) return;
+
+    const updatePerformanceContextSummary = () => {
+        const summary = document.getElementById("performance-context-summary");
+        const countryLabel = countryFilter.options[countryFilter.selectedIndex]?.text?.trim() || "Pais nao selecionado";
+        const divisionLabel = divisionFilter.value || "Liga nao selecionada";
+        const clubLabel = clubFilter.value || "Clube nao selecionado";
+        if (!countryFilter.value && !divisionFilter.value && !clubFilter.value) {
+            summary.textContent = "Nenhum pais, liga ou clube selecionado ainda.";
+            return;
+        }
+        summary.textContent = `${countryLabel} -> ${divisionLabel} -> ${clubLabel}`;
+    };
+
+    const filterDivisionOptions = () => {
+        const countryValue = countryFilter.value || "";
+        divisionFilter.disabled = !countryValue;
+        divisionFilter.options[0].text = countryValue ? "Selecione uma liga" : "Escolha primeiro o pais";
+        Array.from(divisionFilter.options).forEach((option, index) => {
+            if (index === 0) return;
+            option.hidden = !!countryValue && option.dataset.country !== countryValue;
+        });
+        if (divisionFilter.selectedOptions[0]?.hidden) {
+            divisionFilter.value = "";
+        }
+        updatePerformanceContextSummary();
+    };
+
+    const filterClubOptions = () => {
+        const countryValue = countryFilter.value || "";
+        const divisionValue = divisionFilter.value || "";
+        clubFilter.disabled = !countryValue || !divisionValue;
+        clubFilter.options[0].text = divisionValue ? "Selecione um clube" : "Escolha primeiro a liga";
+        Array.from(clubFilter.options).forEach((option, index) => {
+            if (index === 0) return;
+            const countryMatches = !countryValue || option.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || option.dataset.division === divisionValue;
+            option.hidden = !(countryMatches && divisionMatches);
+        });
+        if (clubFilter.selectedOptions[0]?.hidden) {
+            clubFilter.value = "";
+        }
+        updatePerformanceContextSummary();
+    };
+
+    const filterRows = () => {
+        const countryValue = countryFilter.value || "";
+        const divisionValue = divisionFilter.value || "";
+        const clubValue = clubFilter.value || "";
+        const searchValue = normalize(searchField.value);
+        rows.forEach((row) => {
+            const countryMatches = !countryValue || row.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || row.dataset.division === divisionValue;
+            const clubMatches = !clubValue || row.dataset.club === clubValue;
+            const searchMatches = !searchValue || normalize(row.dataset.athlete).includes(searchValue);
+            row.hidden = !(countryMatches && divisionMatches && clubMatches && searchMatches);
+        });
+    };
+
+    countryFilter.addEventListener("change", () => {
+        divisionFilter.value = "";
+        clubFilter.value = "";
+        filterDivisionOptions();
+        filterClubOptions();
+        filterRows();
+    });
+    divisionFilter.addEventListener("change", () => {
+        clubFilter.value = "";
+        filterClubOptions();
+        filterRows();
+    });
+    clubFilter.addEventListener("change", () => {
+        filterRows();
+        updatePerformanceContextSummary();
+    });
+    searchField.addEventListener("input", filterRows);
+    filterDivisionOptions();
+    filterClubOptions();
+    filterRows();
+    updatePerformanceContextSummary();
+})();
+</script>
+{% endblock %}

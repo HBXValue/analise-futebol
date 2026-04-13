@@ -3,16 +3,27 @@ from datetime import date
 from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import patch
 
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from catalog.models import Country, Division
+from clubs.models import Club
 from valuation.models import (
     AnalystNote,
     BehaviorMetrics,
+    CareerIntelligenceCase,
+    CareerPrognosis,
+    ClubCompetitiveContext,
+    CoachProfile,
+    CompetitiveDiagnosis,
     DevelopmentPlan,
+    HBXValueProfile,
+    IndividualDevelopmentPlan,
     LiveAnalysisEvent,
     LiveAnalysisSession,
     LivePlayerEvaluation,
@@ -25,6 +36,7 @@ from valuation.models import (
     ProgressTracking,
     User,
 )
+from valuation.career_services import case_completion
 from valuation.services import (
     build_growth_insights,
     build_projection_scenarios,
@@ -35,6 +47,7 @@ from valuation.services import (
     on_ball_decision_analysis,
     save_manual_history_snapshot,
     save_on_ball_event,
+    save_player_bundle,
     save_player_history_snapshot,
     simulate_uplift,
 )
@@ -221,6 +234,220 @@ class ValuationServiceTests(TestCase):
         result = import_players_from_csv(self.user, uploaded)
         self.assertEqual(result.created, 1)
         self.assertTrue(Player.objects.filter(name="Rafael Gomes").exists())
+        imported_player = Player.objects.get(name="Rafael Gomes")
+        self.assertTrue(CareerIntelligenceCase.objects.filter(user=self.user, player=imported_player).exists())
+
+    def test_save_player_bundle_creates_integrated_career_case(self):
+        player = save_player_bundle(
+            self.user,
+            {
+                "name": "Vitor Sena",
+                "public_name": "Vitor Sena",
+                "age": 18,
+                "birth_date": date(2008, 2, 14),
+                "nationality": "Brasil",
+                "position": "Winger",
+                "secondary_positions": "Forward",
+                "dominant_foot": "left",
+                "height_cm": 178,
+                "weight_kg": 72,
+                "current_value": Decimal("1100000.00"),
+                "league_level": "Brazil Serie B",
+                "club_origin": "Vila Nova",
+                "category": "professional",
+                "contract_months_remaining": 18,
+                "squad_status": "rotation",
+                "athlete_objectives": "gain_minutes",
+                "profile_notes": "Boa resposta competitiva e pronta para crescer.",
+                "xg": 0.2,
+                "xa": 0.15,
+                "passes_pct": 82,
+                "dribbles_pct": 69,
+                "tackles_pct": 44,
+                "high_intensity_distance": 9800,
+                "final_third_recoveries": 4,
+                "annual_growth": 13,
+                "club_interest": 61,
+                "league_score": 67,
+                "age_factor": 80,
+                "club_reputation": 52,
+                "instagram_handle": "@vitorsena",
+                "tiktok_handle": "@vitorsena",
+                "x_handle": "@vitorsena",
+                "google_news_query": "Vitor Sena Vila Nova",
+                "youtube_query": "Vitor Sena highlights",
+                "followers": 12000,
+                "engagement": 3.5,
+                "media_mentions": 12,
+                "sponsorships": 1,
+                "sentiment_score": 73,
+                "conscientiousness": 79,
+                "adaptability": 77,
+                "resilience": 75,
+                "deliberate_practice": 82,
+                "executive_function": 68,
+                "leadership": 66,
+            },
+        )
+        case = CareerIntelligenceCase.objects.get(player=player)
+        self.assertEqual(case.athlete_name, "Vitor Sena")
+        self.assertEqual(case.current_club, "Vila Nova")
+        self.assertEqual(case.nationality, "Brasil")
+        self.assertEqual(case.dominant_foot, "left")
+        self.assertEqual(case.contract_months_remaining, 18)
+        self.assertEqual(case.athlete_objectives, ["gain_minutes"])
+        self.assertEqual(case.analyst_notes, "Boa resposta competitiva e pronta para crescer.")
+        self.assertEqual(player.marketing_metrics.instagram_handle, "@vitorsena")
+        self.assertEqual(player.marketing_metrics.google_news_query, "Vitor Sena Vila Nova")
+        self.assertIsNotNone(player.division_reference)
+        self.assertIsNotNone(player.club_reference)
+
+    def test_save_player_bundle_creates_catalog_references_for_new_division_and_club(self):
+        player = save_player_bundle(
+            self.user,
+            {
+                "name": "Alan Souza",
+                "age": 20,
+                "position": "Winger",
+                "current_value": Decimal("800000.00"),
+                "league_level": "Paulistão Série A2",
+                "club_origin": "Clube Exemplo SP",
+                "xg": 0.18,
+                "xa": 0.12,
+                "passes_pct": 80,
+                "dribbles_pct": 64,
+                "tackles_pct": 40,
+                "high_intensity_distance": 9700,
+                "final_third_recoveries": 3,
+                "annual_growth": 10,
+                "club_interest": 58,
+                "league_score": 60,
+                "age_factor": 79,
+                "club_reputation": 45,
+                "followers": 9000,
+                "engagement": 2.4,
+                "media_mentions": 6,
+                "sponsorships": 1,
+                "sentiment_score": 70,
+                "conscientiousness": 75,
+                "adaptability": 76,
+                "resilience": 72,
+                "deliberate_practice": 79,
+                "executive_function": 67,
+                "leadership": 63,
+            },
+        )
+        self.assertEqual(player.division_reference.name, "Paulistão Série A2")
+        self.assertEqual(player.club_reference.official_name, "Clube Exemplo SP")
+        self.assertTrue(Division.objects.filter(name="Paulistão Série A2").exists())
+        self.assertTrue(Club.objects.filter(official_name="Clube Exemplo SP").exists())
+
+    def test_save_player_bundle_uses_selected_foreign_country_for_division_and_club(self):
+        call_command("seed_european_top_divisions")
+        spain = Country.objects.get(code="ESP")
+        laliga = Division.objects.get(country=spain, level=1)
+        club = Club.objects.create(
+            country=spain,
+            division=laliga,
+            official_name="Real Madrid",
+            short_name="Real Madrid",
+            status=Club.Status.ACTIVE,
+        )
+
+        player = save_player_bundle(
+            self.user,
+            {
+                "country_code": "ESP",
+                "name": "Adrian Torres",
+                "age": 21,
+                "position": "Winger",
+                "current_value": Decimal("1800000.00"),
+                "league_level": "LaLiga",
+                "club_origin": "Real Madrid",
+                "xg": 0.22,
+                "xa": 0.16,
+                "passes_pct": 82,
+                "dribbles_pct": 67,
+                "tackles_pct": 34,
+                "high_intensity_distance": 9850,
+                "final_third_recoveries": 4,
+                "annual_growth": 13,
+                "club_interest": 66,
+                "league_score": 84,
+                "age_factor": 77,
+                "club_reputation": 95,
+                "followers": 23000,
+                "engagement": 4.2,
+                "media_mentions": 12,
+                "sponsorships": 2,
+                "sentiment_score": 79,
+                "conscientiousness": 80,
+                "adaptability": 77,
+                "resilience": 78,
+                "deliberate_practice": 81,
+                "executive_function": 74,
+                "leadership": 69,
+            },
+        )
+
+        self.assertEqual(player.division_reference_id, laliga.id)
+        self.assertEqual(player.club_reference_id, club.id)
+        self.assertEqual(player.division_reference.country.code, "ESP")
+
+    def test_seed_initial_data_creates_brazilian_main_divisions(self):
+        call_command("seed_initial_data")
+        brazil = Country.objects.get(code="BRA")
+        divisions = list(Division.objects.filter(country=brazil, scope=Division.Scope.NATIONAL).order_by("level"))
+        self.assertEqual([division.short_name for division in divisions[:4]], ["Série A", "Série B", "Série C", "Série D"])
+
+    def test_normalize_brazil_clubs_merges_duplicates_and_updates_player_reference(self):
+        call_command("seed_initial_data")
+        brazil = Country.objects.get(code="BRA")
+        serie_a = Division.objects.get(country=brazil, level=1)
+        duplicate_a = Club.objects.create(country=brazil, division=serie_a, official_name="Esporte Clube Bahia", short_name="Bahia")
+        canonical = Club.objects.create(country=brazil, division=serie_a, official_name="Bahia", short_name="Bahia")
+        player = save_player_bundle(
+            self.user,
+            {
+                "name": "Ruan Costa",
+                "age": 19,
+                "position": "Winger",
+                "current_value": Decimal("950000.00"),
+                "league_level": "Série A",
+                "club_origin": "Esporte Clube Bahia",
+                "xg": 0.2,
+                "xa": 0.12,
+                "passes_pct": 81,
+                "dribbles_pct": 66,
+                "tackles_pct": 37,
+                "high_intensity_distance": 9600,
+                "final_third_recoveries": 4,
+                "annual_growth": 11,
+                "club_interest": 54,
+                "league_score": 63,
+                "age_factor": 78,
+                "club_reputation": 52,
+                "followers": 10000,
+                "engagement": 2.1,
+                "media_mentions": 10,
+                "sponsorships": 1,
+                "sentiment_score": 71,
+                "conscientiousness": 76,
+                "adaptability": 75,
+                "resilience": 74,
+                "deliberate_practice": 79,
+                "executive_function": 66,
+                "leadership": 64,
+            },
+        )
+        player.club_reference = duplicate_a
+        player.save(update_fields=["club_reference"])
+
+        call_command("normalize_brazil_clubs")
+
+        player.refresh_from_db()
+        self.assertEqual(player.club_reference_id, canonical.id)
+        self.assertFalse(Club.objects.filter(id=duplicate_a.id).exists())
 
 
 class ValuationViewsTests(TestCase):
@@ -392,6 +619,12 @@ class ValuationViewsTests(TestCase):
         self.assertRedirects(response, f"{reverse('live-analysis')}?report={report.id}&lang=pt")
         self.assertEqual(report.position, "Atacante")
         self.assertEqual(report.payload["indicadores_especificos_posicao"]["valores"]["Gol"], 1)
+        case = CareerIntelligenceCase.objects.get(user=user, player=player)
+        self.assertEqual(case.current_club, "Paysandu")
+        self.assertIn("Analise ao vivo 09/04/2026", case.analyst_notes)
+        self.assertTrue(PlayerHistory.objects.filter(player=player, date="2026-04-09").exists())
+        analyst_note = AnalystNote.objects.get(player=player, date="2026-04-09")
+        self.assertIn("Entrou bem no jogo.", analyst_note.analysis_text)
 
     def test_live_analysis_page_renders(self):
         user = User.objects.create(email="live@club.com", password_hash=make_password("secretpass"))
@@ -414,3 +647,567 @@ class ValuationViewsTests(TestCase):
         response = self.client.get(reverse("live-analysis"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Registro de desempenho individual em jogo")
+
+    def test_hbx_value_score_page_renders(self):
+        user = User.objects.create(email="hbx@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Luis Fernando",
+            age=20,
+            position="Atacante",
+            current_value=Decimal("2400000.00"),
+            league_level="Brazil Serie A",
+            club_origin="Fortaleza",
+        )
+        PerformanceMetrics.objects.create(
+            player=player,
+            xg=0.32,
+            xa=0.18,
+            passes_pct=82,
+            dribbles_pct=64,
+            tackles_pct=37,
+            high_intensity_distance=10500,
+            final_third_recoveries=6,
+        )
+        MarketMetrics.objects.create(
+            player=player,
+            annual_growth=18,
+            club_interest=72,
+            league_score=75,
+            age_factor=83,
+            club_reputation=68,
+        )
+        MarketingMetrics.objects.create(
+            player=player,
+            followers=420000,
+            engagement=7.8,
+            media_mentions=95,
+            sponsorships=2,
+            sentiment_score=74,
+        )
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+        response = self.client.get(reverse("hbx-value-score"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Market Intelligence")
+        self.assertContains(response, "Market Intelligence aplicado ao futebol")
+        self.assertContains(response, "Google News query")
+        self.assertContains(response, "Buscar YouTube Data API")
+        self.assertContains(response, "Buscar TikTok")
+        self.assertNotContains(response, "Escopo do MVP")
+
+    def test_hbx_value_score_post_persists_profile_for_player(self):
+        user = User.objects.create(email="hbx-save@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Joao Teste",
+            age=22,
+            position="Atacante",
+            current_value=Decimal("1300000.00"),
+            league_level="Série B",
+            club_origin="Sport Recife",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+        response = self.client.post(
+            reverse("hbx-value-score"),
+            {
+                "player_id": player.id,
+                "source": "manual",
+                "instagram_handle": "@joaoteste",
+                "google_news_query": "Joao Teste",
+                "youtube_query": "Joao Teste highlights",
+                "instagram_mentions": "70",
+                "instagram_momentum": "72",
+                "instagram_sentiment": "68",
+                "instagram_reach": "64",
+                "instagram_authority": "58",
+                "google_news_mentions": "40",
+                "google_news_momentum": "66",
+                "google_news_sentiment": "70",
+                "google_news_reach": "61",
+                "google_news_authority": "80",
+                "youtube_mentions": "20",
+                "youtube_momentum": "74",
+                "youtube_sentiment": "69",
+                "youtube_reach": "60",
+                "youtube_authority": "65",
+                "manual_mentions": "10",
+                "manual_momentum": "64",
+                "manual_sentiment": "66",
+                "manual_reach": "40",
+                "manual_authority": "55",
+                "manual_performance_rating": "75",
+                "manual_attention_spike": "66",
+                "manual_market_response": "71",
+                "manual_visibility_efficiency": "69",
+                "manual_note": "Entrou no radar apos boa sequencia.",
+                "narrative_keywords": "promissor, decisivo, em ascensao",
+            },
+        )
+        self.assertRedirects(response, f"{reverse('hbx-value-score')}?player={player.id}&lang=pt")
+        profile = HBXValueProfile.objects.get(player=player)
+        self.assertEqual(profile.source, "manual")
+        self.assertEqual(profile.mention_volume, 140)
+        self.assertGreater(profile.market_perception_index, 0)
+        self.assertEqual(profile.narrative_keywords, ["promissor", "decisivo", "em ascensao"])
+        self.assertEqual(profile.source_targets["instagram"]["handle"], "@joaoteste")
+        self.assertEqual(profile.source_collection["google_news"]["mentions"], 40)
+        self.assertEqual(profile.delivery_payload["manual_note"], "Entrou no radar apos boa sequencia.")
+
+    @patch("valuation.views.fetch_google_news_signals")
+    def test_hbx_value_score_can_collect_google_news_by_player_name(self, mocked_fetch):
+        mocked_fetch.return_value = {
+            "query": "Joao Teste",
+            "rss_url": "https://news.google.com/rss/search?q=Joao%20Teste",
+            "mentions": 6,
+            "momentum": 82.0,
+            "sentiment": 63.0,
+            "reach": 57.0,
+            "authority": 78.0,
+            "articles": [
+                {
+                    "title": "Joao Teste vive grande fase no clube",
+                    "link": "https://example.com/noticia",
+                    "source": "ge",
+                    "published_at": "2026-04-12T12:00:00+00:00",
+                }
+            ],
+        }
+        user = User.objects.create(email="hbx-rss@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Joao Teste",
+            age=22,
+            position="Atacante",
+            current_value=Decimal("1300000.00"),
+            league_level="Série B",
+            club_origin="Sport Recife",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("hbx-value-score"),
+            {
+                "player_id": player.id,
+                "action": "fetch_google_news",
+                "google_news_query": "",
+                "narrative_keywords": "promissor, em ascensao",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('hbx-value-score')}?player={player.id}&lang=pt")
+        mocked_fetch.assert_called_once_with("Joao Teste", None)
+        profile = HBXValueProfile.objects.get(player=player)
+        self.assertEqual(profile.source, "ai")
+        self.assertEqual(profile.source_collection["google_news"]["mentions"], 6)
+        self.assertEqual(profile.source_targets["google_news"]["query"], "Joao Teste")
+        self.assertEqual(profile.source_collection["google_news"]["articles"][0]["source"], "ge")
+
+    @patch("valuation.views.fetch_youtube_signals")
+    def test_hbx_value_score_can_collect_youtube_by_player_name(self, mocked_fetch):
+        mocked_fetch.return_value = {
+            "query": "Carlos Video",
+            "channel_id": "UC123",
+            "mentions": 5,
+            "momentum": 79.0,
+            "sentiment": 66.0,
+            "reach": 61.0,
+            "authority": 74.0,
+            "videos": [
+                {
+                    "title": "Carlos Video highlights 2026",
+                    "video_id": "abc123",
+                    "channel_title": "ge",
+                    "published_at": "2026-04-12T12:00:00+00:00",
+                }
+            ],
+        }
+        user = User.objects.create(email="hbx-yt@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Carlos Video",
+            age=21,
+            position="Atacante",
+            current_value=Decimal("1100000.00"),
+            league_level="Série C",
+            club_origin="Santa Cruz",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("hbx-value-score"),
+            {
+                "player_id": player.id,
+                "action": "fetch_youtube",
+                "youtube_query": "",
+                "youtube_channel_id": "UC123",
+                "narrative_keywords": "promissor",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('hbx-value-score')}?player={player.id}&lang=pt")
+        mocked_fetch.assert_called_once_with("Carlos Video", "UC123")
+        profile = HBXValueProfile.objects.get(player=player)
+        self.assertEqual(profile.source, "ai")
+        self.assertEqual(profile.source_collection["youtube"]["mentions"], 5)
+        self.assertEqual(profile.source_targets["youtube"]["channel_id"], "UC123")
+        self.assertEqual(profile.source_collection["youtube"]["videos"][0]["video_id"], "abc123")
+
+    @patch("valuation.views.fetch_tiktok_signals")
+    def test_hbx_value_score_can_collect_tiktok_by_player_name(self, mocked_fetch):
+        mocked_fetch.return_value = {
+            "query": "Leo Tik",
+            "handle": "@leotik",
+            "mentions": 4,
+            "momentum": 77.0,
+            "sentiment": 64.0,
+            "reach": 72.0,
+            "authority": 68.0,
+            "videos": [
+                {
+                    "id": "tk1",
+                    "username": "scoutfutebol",
+                    "description": "Leo Tik em grande fase",
+                    "published_at": "2026-04-12T10:00:00+00:00",
+                }
+            ],
+        }
+        user = User.objects.create(email="hbx-tt@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Leo Tik",
+            age=20,
+            position="Lateral",
+            current_value=Decimal("900000.00"),
+            league_level="Série D",
+            club_origin="Treze",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("hbx-value-score"),
+            {
+                "player_id": player.id,
+                "action": "fetch_tiktok",
+                "tiktok_query": "",
+                "tiktok_handle": "@leotik",
+                "narrative_keywords": "ascensao",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('hbx-value-score')}?player={player.id}&lang=pt")
+        mocked_fetch.assert_called_once_with("Leo Tik", "@leotik")
+        profile = HBXValueProfile.objects.get(player=player)
+        self.assertEqual(profile.source, "ai")
+        self.assertEqual(profile.source_collection["tiktok"]["mentions"], 4)
+        self.assertEqual(profile.source_targets["tiktok"]["handle"], "@leotik")
+        self.assertEqual(profile.source_collection["tiktok"]["videos"][0]["id"], "tk1")
+
+    def test_dashboard_exposes_hbx_value_score_link(self):
+        user = User.objects.create(email="dash-hbx@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Pedro Lima",
+            age=21,
+            position="Lateral",
+            current_value=Decimal("1100000.00"),
+            league_level="Brazil Serie B",
+            club_origin="America-MG",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("hbx-value-score"))
+
+    def test_dashboard_shows_integrated_career_and_live_status(self):
+        user = User.objects.create(email="dash@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Caio Mendes",
+            age=21,
+            position="Centroavante",
+            current_value=Decimal("2100000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Criciuma",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        case = CareerIntelligenceCase.objects.create(
+            user=user,
+            player=player,
+            athlete_name="Caio Mendes",
+            position_primary="Centroavante",
+            current_club="Criciuma",
+            current_step="development",
+        )
+        LivePlayerEvaluation.objects.create(
+            user=user,
+            player=player,
+            athlete_name="Caio Mendes",
+            position="Atacante",
+            team="Criciuma",
+            opponent="Sport",
+            competition="Serie B",
+            match_date=date(2026, 4, 10),
+            analyst_name="Scout 2",
+            physical_data_source="manual",
+            payload={"avaliacao_geral": {"resumo_do_desempenho": "Gerou ameaca constante em profundidade."}},
+        )
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Estado integrado")
+        self.assertContains(response, "development".title())
+        self.assertContains(response, "Gerou ameaca constante em profundidade.")
+
+    def test_dashboard_shows_hbx_value_when_profile_exists(self):
+        user = User.objects.create(email="dash-hbx-profile@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Carlos HBX",
+            age=23,
+            position="Lateral",
+            current_value=Decimal("1700000.00"),
+            league_level="Série C",
+            club_origin="Paysandu",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        HBXValueProfile.objects.create(
+            player=player,
+            source="manual",
+            mention_volume=120,
+            mention_momentum=70,
+            sentiment_score=67,
+            estimated_reach=63,
+            source_relevance=71,
+            performance_rating=74,
+            attention_spike=68,
+            market_response=69,
+            visibility_efficiency=66,
+            market_perception_index=68.5,
+            performance_impact_score=71.3,
+            impact_correlation_score=70.1,
+            trend_label="Crescimento",
+            narrative_label="Promissor",
+            market_label="Percepcao moderada",
+            narrative_summary="Boa leitura de mercado.",
+            narrative_keywords=["promissor"],
+            strategic_insights=["Aumentar validacao externa."],
+        )
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Market Intelligence")
+        self.assertContains(response, "68,5")
+        self.assertContains(response, "Crescimento")
+        self.assertContains(response, "0 fontes")
+
+
+class CareerIntelligenceModuleTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create(email="career@club.com", password_hash=make_password("secretpass"))
+        self.player = Player.objects.create(
+            user=self.user,
+            name="Bruno Alves",
+            age=19,
+            position="Atacante",
+            current_value=Decimal("900000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Avai",
+        )
+        PerformanceMetrics.objects.create(player=self.player)
+        MarketMetrics.objects.create(player=self.player)
+        MarketingMetrics.objects.create(player=self.player)
+        BehaviorMetrics.objects.create(player=self.player)
+        session = self.client.session
+        session["valuation_user_id"] = self.user.id
+        session.save()
+
+    def test_can_create_case_and_advance_to_club_step(self):
+        response = self.client.post(
+            f"{reverse('career-case-create')}?lang=pt",
+            {
+                "player": self.player.id,
+                "athlete_name": "Bruno Alves",
+                "birth_date": "2007-03-14",
+                "nationality": "Brasil",
+                "position_primary": "Centroavante",
+                "secondary_positions": ["Extremo direito"],
+                "dominant_foot": "right",
+                "height_cm": "182",
+                "weight_kg": "75",
+                "current_club": "Avai",
+                "category": "professional",
+                "contract_months_remaining": "18",
+                "squad_status": "limited",
+                "athlete_objectives": ["become_starter", "gain_minutes"],
+                "analyst_notes": "Busca mais minutos.",
+            },
+        )
+        case = CareerIntelligenceCase.objects.get(user=self.user)
+        self.assertRedirects(response, f"{reverse('career-case-step', args=[case.id, 'club'])}?lang=pt")
+        self.assertEqual(case.player, self.player)
+        self.assertEqual(case.position_primary, "Centroavante")
+        self.assertEqual(case.secondary_positions, ["Extremo direito"])
+
+    def test_career_case_create_reuses_existing_integrated_case(self):
+        integrated_case = CareerIntelligenceCase.objects.create(
+            user=self.user,
+            player=self.player,
+            athlete_name=self.player.name,
+            position_primary=self.player.position,
+            current_club=self.player.club_origin,
+        )
+        response = self.client.post(
+            f"{reverse('career-case-create')}?lang=pt",
+            {
+                "player": self.player.id,
+                "athlete_name": "Bruno Alves",
+                "birth_date": "2007-03-14",
+                "nationality": "Brasil",
+                "position_primary": "Centroavante",
+                "secondary_positions": "Extremo direito",
+                "dominant_foot": "right",
+                "height_cm": "182",
+                "weight_kg": "75",
+                "current_club": "Avai",
+                "category": "professional",
+                "contract_months_remaining": "18",
+                "squad_status": "limited",
+                "athlete_objectives": "become_starter",
+                "analyst_notes": "Busca mais minutos.",
+            },
+        )
+        self.assertEqual(CareerIntelligenceCase.objects.filter(user=self.user, player=self.player).count(), 1)
+        integrated_case.refresh_from_db()
+        self.assertRedirects(response, f"{reverse('career-case-step', args=[integrated_case.id, 'club'])}?lang=pt")
+        self.assertEqual(integrated_case.position_primary, "Centroavante")
+
+    def test_career_list_supports_english_language(self):
+        CareerIntelligenceCase.objects.create(
+            user=self.user,
+            athlete_name="Bruno Alves",
+            position_primary="Centroavante",
+            current_club="Avai",
+        )
+        response = self.client.get(f"{reverse('career-case-list')}?lang=en")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Performance Intelligence")
+        self.assertContains(response, "Cases in progress")
+
+    def test_completion_requires_core_sections(self):
+        case = CareerIntelligenceCase.objects.create(
+            user=self.user,
+            player=self.player,
+            athlete_name="Bruno Alves",
+            position_primary="Atacante",
+            current_club="Avai",
+        )
+        ClubCompetitiveContext.objects.create(
+            case=case,
+            club_name="Avai",
+            competition="Serie B",
+            team_moment="development",
+            pressure_level="medium",
+            club_philosophy="mixed",
+        )
+        CoachProfile.objects.create(
+            case=case,
+            coach_name="Tecnico A",
+            profile_type="developer",
+            experience_preference="balanced",
+            physical_demand="medium",
+            tactical_demand="medium",
+        )
+        CompetitiveDiagnosis.objects.create(case=case, main_reason="technical_gap")
+        CareerPrognosis.objects.create(case=case, classification="moderate", timeframe="medium", justification="Precisa desenvolver repertorio.")
+        IndividualDevelopmentPlan.objects.create(case=case, priority_actions=["Acao 1", "Acao 2", "Acao 3"])
+        completion = case_completion(case)
+        self.assertTrue(completion["athlete"])
+        self.assertTrue(completion["club"])
+        self.assertTrue(completion["coach"])
+        self.assertTrue(completion["diagnosis"])
+        self.assertTrue(completion["prognosis"])
+        self.assertTrue(completion["development"])
+        self.assertFalse(completion["report"])
+
+    def test_case_report_pdf_is_available(self):
+        case = CareerIntelligenceCase.objects.create(
+            user=self.user,
+            athlete_name="Bruno Alves",
+            position_primary="Atacante",
+            current_club="Avai",
+        )
+        response = self.client.get(reverse("career-case-report-pdf", args=[case.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+
+    @patch("valuation.career_views.generate_ai_development_plan")
+    def test_can_generate_ai_plan_suggestion(self, mocked_generate):
+        mocked_generate.return_value = {
+            "strengths_to_keep": "Atacar profundidade com regularidade.",
+            "short_term_priorities": "Melhorar tomada de decisao no ultimo terco.",
+            "medium_term_development": "Ganhar repertorio associativo.",
+            "contextual_factors": "Concorrencia alta no setor ofensivo.",
+            "mental_strategy": "Sustentar confianca e resposta apos erro.",
+            "practical_strategy": "Treino complementar de finalizacao e pressao.",
+            "priority_actions": ["Acao 1", "Acao 2", "Acao 3"],
+            "template_name": "Sugestao IA",
+        }
+        case = CareerIntelligenceCase.objects.create(
+            user=self.user,
+            player=self.player,
+            athlete_name="Bruno Alves",
+            position_primary="Centroavante",
+            current_club="Avai",
+        )
+        response = self.client.post(
+            f"{reverse('career-case-step', args=[case.id, 'development'])}?lang=pt",
+            {"action": "generate_ai_plan"},
+        )
+        self.assertEqual(response.status_code, 200)
+        plan = IndividualDevelopmentPlan.objects.get(case=case)
+        self.assertEqual(plan.template_name, "Sugestao IA")
+        self.assertEqual(plan.priority_actions, ["Acao 1", "Acao 2", "Acao 3"])
+        self.assertContains(response, "Sugestao de plano gerada pela IA")
