@@ -454,7 +454,7 @@ class ValuationViewsTests(TestCase):
     def test_signup_and_redirect(self):
         response = self.client.post(
             reverse("signup"),
-            {"email": "agent@club.com", "password": "secretpass", "confirm_password": "secretpass"},
+            {"email": "geral@hbelevensocial.com", "password": "secretpass", "confirm_password": "secretpass"},
         )
         self.assertRedirects(response, reverse("dashboard"))
 

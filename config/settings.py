@@ -10,7 +10,6 @@ try:
 except ImportError:  # pragma: no cover - local fallback when dependency is not installed yet
     dj_database_url = None
 
-
 def env_bool(name, default=False):
     value = os.environ.get(name)
     if value is None:
@@ -205,6 +204,6 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
 
 LOGIN_URL = "/login/"
-LOGIN_REDIRECT_URL = "/"
+LOGIN_REDIRECT_URL = "/app/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -25,7 +25,7 @@ from valuation.views import (
 )
 
 urlpatterns = [
-    path("", dashboard_view, name="dashboard"),
+    path("app/", dashboard_view, name="dashboard"),
     path("reports/", reports_view, name="reports"),
     path("data/", data_view, name="data"),
     path("career/", career_case_list_view, name="career-case-list"),

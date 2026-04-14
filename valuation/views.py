@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import date
 
 from django.contrib import messages
@@ -455,17 +456,31 @@ def signup_view(request):
     if get_current_user(request):
         return redirect("dashboard")
     form = SignUpForm(request.POST or None, lang=lang)
+    allowed_signup_email = os.environ.get("HBX_INTERNAL_ADMIN_EMAIL", "geral@hbelevensocial.com").strip().lower()
     if request.method == "POST" and form.is_valid():
-        if User.objects.filter(email__iexact=form.cleaned_data["email"]).exists():
+        requested_email = form.cleaned_data["email"].lower()
+        if requested_email != allowed_signup_email:
+            messages.error(request, "Cadastro restrito ao administrador interno da plataforma.")
+        elif User.objects.filter(email__iexact=requested_email).exists():
             messages.error(request, tr(lang, "email_exists"))
         else:
             user = User.objects.create(
-                email=form.cleaned_data["email"].lower(),
+                email=requested_email,
                 password_hash=make_password(form.cleaned_data["password"]),
             )
             request.session[SESSION_KEY] = user.id
             return redirect("dashboard")
-    return render(request, "valuation/signup.html", {"form": form, "lang": lang, "t": get_translations(lang), "languages": LANGUAGES})
+    return render(
+        request,
+        "valuation/signup.html",
+        {
+            "form": form,
+            "lang": lang,
+            "t": get_translations(lang),
+            "languages": LANGUAGES,
+            "allowed_signup_email": allowed_signup_email,
+        },
+    )
 
 
 def logout_view(request):
