@@ -236,6 +236,81 @@
                         </article>
                     {% endfor %}
                 </div>
+
+                <section class="panel" style="margin-top: 18px; background: rgba(255,255,255,0.02);">
+                    <div style="display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+                        <div>
+                            <h2 style="margin-bottom: 8px;">Leitura IA</h2>
+                            <p style="margin-top: 0;">A IA le o payload do atleta, respeita os scores do HBX e devolve uma leitura executiva pronta para dashboard.</p>
+                        </div>
+                        <form method="post" action="{% url 'player-ai-insight' featured_player.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="compare_window" value="{{ compare_window }}">
+                            <input type="hidden" name="scope" value="dashboard">
+                            <button class="button button-primary" type="submit">
+                                {% if ai_dashboard_insight %}Atualizar leitura IA{% else %}Gerar leitura IA{% endif %}
+                            </button>
+                        </form>
+                    </div>
+
+                    {% if ai_dashboard_insight %}
+                        <div class="grid stats-grid" style="margin-top: 18px;">
+                            <article class="stat-card">
+                                <span>Status IA</span>
+                                <strong>{{ ai_dashboard_insight.status_label }}</strong>
+                                <div>Confianca: {{ ai_dashboard_insight.confidence|floatformat:0 }}%</div>
+                                <div style="color: var(--muted); margin-top: 8px;">Modelo: {{ ai_dashboard_insight.model_name }}</div>
+                            </article>
+                            <article class="stat-card">
+                                <span>Mudanca principal</span>
+                                <strong>{{ ai_dashboard_insight.main_change }}</strong>
+                            </article>
+                            <article class="stat-card">
+                                <span>Risco principal</span>
+                                <strong>{{ ai_dashboard_insight.main_risk }}</strong>
+                            </article>
+                            <article class="stat-card">
+                                <span>Oportunidade principal</span>
+                                <strong>{{ ai_dashboard_insight.main_opportunity }}</strong>
+                            </article>
+                        </div>
+
+                        <div class="progress-stack" style="margin-top: 18px;">
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Resumo executivo IA</div>
+                                    <div class="progress-values">
+                                        <span>{{ ai_dashboard_insight.executive_summary }}</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Acao recomendada pela IA</div>
+                                    <div class="progress-values">
+                                        <span>{{ ai_dashboard_insight.recommended_action }}</span>
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+
+                        {% if ai_dashboard_insight.dashboard_cards %}
+                            <div class="grid stats-grid" style="margin-top: 18px;">
+                                {% for card in ai_dashboard_insight.dashboard_cards %}
+                                    <article class="stat-card">
+                                        <span>{{ card.title }}</span>
+                                        <strong>{{ card.value }}</strong>
+                                        <div>{{ card.commentary }}</div>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <article class="progress-card" style="margin-top: 18px;">
+                            Nenhuma leitura IA gerada para esta janela ainda.
+                        </article>
+                    {% endif %}
+                </section>
             </section>
 
             <section class="grid chart-grid">

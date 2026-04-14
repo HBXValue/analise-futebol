@@ -15,6 +15,7 @@ from catalog.models import Country, Division
 from clubs.models import Club
 from valuation.models import (
     AnalystNote,
+    AthleteAIInsight,
     BehaviorMetrics,
     CareerIntelligenceCase,
     CareerPrognosis,
@@ -45,10 +46,12 @@ from valuation.services import (
     import_players_from_csv,
     live_analysis_summary,
     on_ball_decision_analysis,
+    save_hbx_value_profile,
     save_manual_history_snapshot,
     save_on_ball_event,
     save_player_bundle,
     save_player_history_snapshot,
+    sync_live_report_to_integrated_modules,
     simulate_uplift,
 )
 
@@ -146,6 +149,110 @@ class ValuationServiceTests(TestCase):
         self.assertEqual(snapshot.valuation_score, 74)
         self.assertEqual(snapshot.current_value, Decimal("5400000.00"))
 
+    @patch("valuation.ai_service.refresh_ai_insights_for_player")
+    def test_save_player_bundle_refreshes_ai_insights(self, mocked_refresh):
+        save_player_bundle(
+            self.user,
+            {
+                "name": "Vitor Sena",
+                "public_name": "Vitor Sena",
+                "age": 18,
+                "birth_date": date(2008, 2, 14),
+                "nationality": "Brasil",
+                "position": "Winger",
+                "secondary_positions": "Forward",
+                "dominant_foot": "left",
+                "height_cm": 178,
+                "weight_kg": 72,
+                "current_value": Decimal("1100000.00"),
+                "league_level": "Brazil Serie B",
+                "club_origin": "Vila Nova",
+                "category": "professional",
+                "contract_months_remaining": 18,
+                "squad_status": "rotation",
+                "athlete_objectives": "gain_minutes",
+                "profile_notes": "Boa resposta competitiva e pronta para crescer.",
+                "xg": 0.2,
+                "xa": 0.15,
+                "passes_pct": 82,
+                "dribbles_pct": 69,
+                "tackles_pct": 44,
+                "high_intensity_distance": 9800,
+                "final_third_recoveries": 4,
+                "annual_growth": 13,
+                "club_interest": 61,
+                "league_score": 67,
+                "age_factor": 80,
+                "club_reputation": 52,
+                "instagram_handle": "@vitorsena",
+                "tiktok_handle": "@vitorsena",
+                "x_handle": "@vitorsena",
+                "google_news_query": "Vitor Sena Vila Nova",
+                "youtube_query": "Vitor Sena highlights",
+                "followers": 12000,
+                "engagement": 3.5,
+                "media_mentions": 12,
+                "sponsorships": 1,
+                "sentiment_score": 73,
+                "conscientiousness": 79,
+                "adaptability": 77,
+                "resilience": 75,
+                "deliberate_practice": 82,
+                "executive_function": 68,
+                "leadership": 66,
+            },
+        )
+        mocked_refresh.assert_called_once()
+
+    @patch("valuation.ai_service.refresh_ai_insights_for_player")
+    def test_save_hbx_value_profile_refreshes_ai_insights(self, mocked_refresh):
+        save_hbx_value_profile(
+            self.player,
+            {
+                "athlete_name": self.player.name,
+                "club_name": self.player.club_origin,
+                "position": self.player.position,
+                "current_value": float(self.player.current_value),
+                "instagram_handle": "@lucas",
+                "google_news_query": "Lucas Silva Palmeiras",
+                "youtube_query": "Lucas Silva highlights",
+                "tiktok_handle": "@lucas",
+                "manual_context": "Bom momento competitivo.",
+                "google_news_mentions": 12,
+                "google_news_momentum": 55,
+                "google_news_sentiment": 70,
+                "google_news_reach": 48,
+                "google_news_authority": 60,
+                "youtube_mentions": 8,
+                "youtube_momentum": 50,
+                "youtube_sentiment": 68,
+                "youtube_reach": 52,
+                "youtube_authority": 58,
+                "manual_mentions": 4,
+                "manual_momentum": 62,
+                "manual_sentiment": 75,
+                "manual_reach": 44,
+                "manual_authority": 57,
+                "manual_performance_rating": 78,
+                "manual_attention_spike": 64,
+                "manual_market_response": 59,
+                "manual_visibility_efficiency": 61,
+                "manual_note": "Resposta positiva do mercado.",
+            },
+        )
+        mocked_refresh.assert_called_once_with(self.player)
+
+    @patch("valuation.ai_service.refresh_ai_insights_for_player")
+    def test_manual_snapshot_refreshes_ai_insights(self, mocked_refresh):
+        save_manual_history_snapshot(
+            self.player,
+            {
+                "date": date(2026, 2, 15),
+                "current_value": Decimal("5400000.00"),
+            },
+        )
+        mocked_refresh.assert_called_once_with(self.player)
+
     def test_uplift_simulation_compares_current_vs_target(self):
         result = simulate_uplift(
             self.player,
@@ -220,6 +327,30 @@ class ValuationServiceTests(TestCase):
         summary = live_analysis_summary(session, "pt")
         self.assertEqual(summary["total_points"], 1.7)
         self.assertEqual(summary["average_retention"], 2.0)
+
+    @patch("valuation.ai_service.refresh_ai_insights_for_player")
+    def test_sync_live_report_refreshes_ai_insights(self, mocked_refresh):
+        report = LivePlayerEvaluation.objects.create(
+            user=self.user,
+            player=self.player,
+            athlete_name=self.player.name,
+            position=self.player.position,
+            match_date=date(2026, 4, 10),
+            team="Palmeiras",
+            opponent="Bahia",
+            competition="Serie A",
+            analyst_name="Analista HBX",
+            minutes_played=72,
+            payload={
+                "avaliacao_geral": {
+                    "resumo_do_desempenho": "Atleta sustentou boa intensidade.",
+                    "pontos_fortes": "Ataque ao espaco",
+                    "pontos_a_melhorar": "Tomada de decisao no ultimo passe",
+                },
+            },
+        )
+        sync_live_report_to_integrated_modules(self.player, report)
+        mocked_refresh.assert_called_once_with(self.player)
 
     def test_csv_import_creates_related_records(self):
         content = (
@@ -1042,6 +1173,106 @@ class ValuationViewsTests(TestCase):
         self.assertContains(response, "68,5")
         self.assertContains(response, "Crescimento")
         self.assertContains(response, "0 fontes")
+
+    def test_dashboard_shows_cached_ai_insight_when_available(self):
+        user = User.objects.create(email="dash-ai@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Mateus AI",
+            age=22,
+            position="Meia",
+            current_value=Decimal("1900000.00"),
+            league_level="Serie B",
+            club_origin="Goias",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        AthleteAIInsight.objects.create(
+            player=player,
+            scope="dashboard",
+            window_days=90,
+            language="pt",
+            model_name="gpt-4.1-mini",
+            status_label="Evolucao consistente",
+            executive_summary="O atleta evoluiu com sustentacao de performance e potential.",
+            main_change="Performance em crescimento.",
+            main_risk="Mercado ainda abaixo do ritmo do campo.",
+            main_opportunity="Posicionamento externo favoravel.",
+            recommended_action="Consolidar narrativa competitiva.",
+            confidence=86,
+            dashboard_cards=[
+                {"title": "Status", "value": "Forte", "commentary": "Momento favoravel."},
+                {"title": "Mercado", "value": "Em resposta", "commentary": "Ha tracao inicial."},
+                {"title": "Acao", "value": "Posicionar", "commentary": "Janela positiva."},
+            ],
+        )
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Leitura IA")
+        self.assertContains(response, "Evolucao consistente")
+        self.assertContains(response, "Consolidar narrativa competitiva.")
+
+    @patch("valuation.views.generate_ai_dashboard_insight")
+    def test_dashboard_can_trigger_ai_insight_generation(self, mocked_generate):
+        user = User.objects.create(email="dash-ai-action@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Rafael IA",
+            age=20,
+            position="Ponta",
+            current_value=Decimal("1600000.00"),
+            league_level="Serie C",
+            club_origin="Nautico",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("player-ai-insight", args=[player.id]),
+            {"compare_window": "90", "scope": "dashboard"},
+        )
+
+        self.assertRedirects(response, f"{reverse('dashboard')}?lang=pt&featured_player={player.id}&compare_window=90")
+        mocked_generate.assert_called_once()
+
+    @patch("valuation.views.generate_ai_dashboard_insight")
+    def test_market_ai_trigger_redirects_back_to_market_module(self, mocked_generate):
+        user = User.objects.create(email="market-ai-action@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Leo Market",
+            age=21,
+            position="Atacante",
+            current_value=Decimal("1500000.00"),
+            league_level="Serie B",
+            club_origin="Ceara",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("player-ai-insight", args=[player.id]),
+            {"compare_window": "90", "scope": "market"},
+        )
+
+        self.assertRedirects(response, f"{reverse('hbx-value-score')}?player={player.id}&lang=pt")
+        mocked_generate.assert_called_once()
 
 
 class CareerIntelligenceModuleTests(TestCase):

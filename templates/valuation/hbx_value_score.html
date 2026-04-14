@@ -123,6 +123,43 @@
         </div>
     </div>
 
+    {% if selected_player %}
+    <section class="panel section-panel" style="margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+            <div>
+                <h2 class="section-title">Leitura IA</h2>
+                <p style="margin-top: 0;">A IA cruza o contexto do atleta com a leitura longitudinal ja calculada pelo HBX.</p>
+            </div>
+            <form method="post" action="{% url 'player-ai-insight' selected_player.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="compare_window" value="90">
+                <input type="hidden" name="scope" value="market">
+                <button class="button button-secondary" type="submit">
+                    {% if ai_dashboard_insight %}Atualizar leitura IA{% else %}Gerar leitura IA{% endif %}
+                </button>
+            </form>
+        </div>
+        {% if ai_dashboard_insight %}
+            <div class="progress-stack" style="margin-top: 18px;">
+                <div class="progress-card">
+                    <div class="progress-label">Resumo executivo IA</div>
+                    <div class="progress-values">{{ ai_dashboard_insight.executive_summary }}</div>
+                </div>
+                <div class="progress-card">
+                    <div class="progress-label">Oportunidade principal</div>
+                    <div class="progress-values">{{ ai_dashboard_insight.main_opportunity }}</div>
+                </div>
+                <div class="progress-card">
+                    <div class="progress-label">Acao recomendada</div>
+                    <div class="progress-values">{{ ai_dashboard_insight.recommended_action }}</div>
+                </div>
+            </div>
+        {% else %}
+            <article class="progress-card" style="margin-top: 18px;">Nenhuma leitura IA disponivel para este atleta ainda.</article>
+        {% endif %}
+    </section>
+    {% endif %}
+
     <form method="post" id="hbx-value-form">
         {% csrf_token %}
         <input type="hidden" name="player_id" value="{% if selected_player %}{{ selected_player.id }}{% endif %}">

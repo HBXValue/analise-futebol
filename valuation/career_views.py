@@ -7,6 +7,7 @@ from django.views.decorators.http import require_http_methods
 
 from catalog.models import Country, Division
 from clubs.models import Club
+from valuation.ai_service import get_cached_ai_dashboard_insight
 from valuation.auth import get_current_user, login_required
 from valuation.career_forms import (
     CareerCaseForm,
@@ -68,10 +69,19 @@ def career_case_list_view(request):
     for case_player in players:
         sync_integrated_player_modules(case_player)
     cases = _case_queryset(current_user)
+    selected_player = None
+    selected_player_id = request.GET.get("athlete")
+    if selected_player_id:
+        try:
+            selected_player = next((player for player in players if player.id == int(selected_player_id)), None)
+        except (TypeError, ValueError):
+            selected_player = None
     context = {
         "current_user": current_user,
         "cases": cases,
         "players": players,
+        "selected_player": selected_player,
+        "ai_dashboard_insight": get_cached_ai_dashboard_insight(selected_player, lang, 90, scope="performance") if selected_player else None,
         "case_rows": [{"case": case, "step_label": get_career_step_label(case.current_step, lang)} for case in cases],
         "countries": list(Country.objects.filter(is_active=True).order_by("name")),
         "division_suggestions": list(
@@ -84,7 +94,7 @@ def career_case_list_view(request):
         "t": get_translations(lang),
         "languages": LANGUAGES,
     }
-    context.update(build_global_player_context(request, current_user))
+    context.update(build_global_player_context(request, current_user, selected_player))
     return render(request, "valuation/career_case_list.html", context)
 
 

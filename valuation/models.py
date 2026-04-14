@@ -115,6 +115,38 @@ class HBXValueProfile(models.Model):
         ordering = ["-updated_at", "-id"]
 
 
+class AthleteAIInsight(models.Model):
+    class Scope(models.TextChoices):
+        DASHBOARD = "dashboard", "Dashboard"
+        MARKET = "market", "Market Intelligence"
+        PERFORMANCE = "performance", "Performance Intelligence"
+        REPORTS = "reports", "Reports"
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="ai_insights")
+    scope = models.CharField(max_length=20, choices=Scope.choices, default=Scope.DASHBOARD)
+    window_days = models.PositiveSmallIntegerField(default=90)
+    language = models.CharField(max_length=10, default="pt")
+    prompt_version = models.CharField(max_length=20, default="v1")
+    model_name = models.CharField(max_length=80, blank=True)
+    status_label = models.CharField(max_length=80, blank=True)
+    executive_summary = models.TextField(blank=True)
+    main_change = models.TextField(blank=True)
+    main_risk = models.TextField(blank=True)
+    main_opportunity = models.TextField(blank=True)
+    recommended_action = models.TextField(blank=True)
+    confidence = models.FloatField(default=0)
+    dashboard_cards = models.JSONField(default=list, blank=True)
+    payload_snapshot = models.JSONField(default=dict, blank=True)
+    raw_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "athlete_ai_insights"
+        ordering = ["-updated_at", "-id"]
+        unique_together = ("player", "scope", "window_days", "language", "prompt_version")
+
+
 class PerformanceMetrics(models.Model):
     player = models.OneToOneField(Player, on_delete=models.CASCADE, primary_key=True, related_name="performance_metrics", db_column="player_id")
     xg = models.FloatField(default=0)

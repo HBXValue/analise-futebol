@@ -94,6 +94,36 @@
 
         <section class="panel">
             <h2>{{ t.career_cases_in_progress }}</h2>
+            {% if selected_player %}
+                <div class="progress-stack" style="margin-bottom: 18px;">
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">Leitura IA do atleta selecionado</div>
+                            <div class="progress-values">
+                                {% if ai_dashboard_insight %}
+                                    <span><strong>{{ ai_dashboard_insight.status_label }}</strong></span>
+                                    <span>{{ ai_dashboard_insight.executive_summary }}</span>
+                                    <span>{{ ai_dashboard_insight.recommended_action }}</span>
+                                {% else %}
+                                    <span>Nenhuma leitura IA gerada ainda para este atleta.</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </article>
+                    <article class="progress-card">
+                        <div class="actions">
+                            <form method="post" action="{% url 'player-ai-insight' selected_player.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="compare_window" value="90">
+                                <input type="hidden" name="scope" value="performance">
+                                <button class="button button-secondary" type="submit">
+                                    {% if ai_dashboard_insight %}Atualizar leitura IA{% else %}Gerar leitura IA{% endif %}
+                                </button>
+                            </form>
+                        </div>
+                    </article>
+                </div>
+            {% endif %}
             <table class="player-table">
                 <thead>
                 <tr>

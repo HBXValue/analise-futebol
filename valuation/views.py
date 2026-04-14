@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 from catalog.models import Country, Division
 from clubs.models import Club
 from valuation.auth import SESSION_KEY, get_current_user, login_required
+from valuation.ai_service import generate_ai_dashboard_insight, get_cached_ai_dashboard_insight
 from valuation.constants import get_position_group
 from valuation.forms import AnalystNoteForm, CSVUploadForm, ComparisonForm, DevelopmentPlanForm, LiveAnalysisEventForm, LiveAnalysisSessionForm, LoginForm, OnBallEventForm, PlayerValuationForm, ProgressTrackingForm, SignUpForm, SnapshotSimulationForm, UpliftSimulationForm
 from valuation.i18n import LANGUAGES, get_language, get_translations, tr
@@ -531,6 +532,10 @@ def dashboard_view(request):
 
     players_payload = build_dashboard_payload(players, lang)
     featured_payload = next((item for item in players_payload if featured_player and item["player"].id == featured_player.id), None)
+    ai_dashboard_insight = (
+        get_cached_ai_dashboard_insight(featured_player, lang, int(compare_window), scope="dashboard")
+        if featured_player else None
+    )
 
     context = {
         "current_user": current_user,
@@ -551,6 +556,7 @@ def dashboard_view(request):
         "longitudinal_delta_chart": longitudinal_delta_chart_data(featured_player, lang, int(compare_window)) if featured_player else None,
         "player_timeline": player_timeline_events(featured_player, int(compare_window)) if featured_player else [],
         "growth_insights": build_growth_insights(featured_player, lang, projection_period) if featured_player else None,
+        "ai_dashboard_insight": ai_dashboard_insight,
         "projection_period": projection_period,
         "projection_periods": ["3", "6", "12", "24"],
         "compare_window": compare_window,
@@ -572,6 +578,38 @@ def dashboard_view(request):
         context["main_driver_text"] = tr(lang, "main_driver_sentence") % context["growth_insights"]["main_driver"]
     context.update(build_global_player_context(request, current_user, featured_player))
     return render(request, "valuation/dashboard.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def player_ai_insight_view(request, player_id):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    player = get_object_or_404(Player, pk=player_id, user=current_user)
+    compare_window = request.POST.get("compare_window", "90")
+    try:
+        window_days = int(compare_window)
+    except (TypeError, ValueError):
+        window_days = 90
+    if window_days not in {30, 60, 90, 180}:
+        window_days = 90
+    scope = request.POST.get("scope", "dashboard")
+    if scope not in {"dashboard", "market", "performance", "reports"}:
+        scope = "dashboard"
+
+    try:
+        generate_ai_dashboard_insight(player, lang, window_days, scope=scope)
+        messages.success(request, "Leitura IA gerada e integrada ao dashboard.")
+    except Exception as exc:
+        messages.error(request, f"Nao foi possivel gerar a leitura IA: {exc}")
+
+    if scope == "market":
+        return redirect(f"{reverse('hbx-value-score')}?player={player.id}&lang={lang}")
+    if scope == "performance":
+        return redirect(f"{reverse('career-case-list')}?athlete={player.id}&lang={lang}")
+    if scope == "reports":
+        return redirect(f"{reverse('reports')}?player={player.id}&compare_window={window_days}&lang={lang}")
+    return redirect(f"{reverse('dashboard')}?lang={lang}&featured_player={player.id}&compare_window={window_days}")
 
 
 @login_required
@@ -808,6 +846,10 @@ def hbx_value_score_view(request):
         return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
 
     selected_hbx_profile = get_hbx_value_profile(selected_player) if selected_player else None
+    ai_dashboard_insight = (
+        get_cached_ai_dashboard_insight(selected_player, lang, 90, scope="market")
+        if selected_player else None
+    )
     if selected_player and selected_hbx_profile:
         selected_seed = build_hbx_seed_from_profile(selected_player, selected_hbx_profile)
     else:
@@ -826,6 +868,7 @@ def hbx_value_score_view(request):
             "players": players,
             "selected_player": selected_player,
             "selected_hbx_profile": selected_hbx_profile,
+            "ai_dashboard_insight": ai_dashboard_insight,
             "selected_seed_json": json.dumps(selected_seed or {}, ensure_ascii=True),
             "player_seed_map_json": json.dumps(player_seed_map, ensure_ascii=True),
             "selected_metrics": selected_metrics,
@@ -880,6 +923,7 @@ def reports_view(request):
         "cases": cases,
         "selected_player": selected_player,
         "selected_case": selected_case,
+        "ai_dashboard_insight": get_cached_ai_dashboard_insight(selected_player, lang, int(compare_window), scope="reports") if selected_player else None,
         "compare_window": compare_window,
         "compare_windows": ["30", "60", "90", "180"],
         "longitudinal_bi": longitudinal_bi_payload(selected_player, lang, int(compare_window)) if selected_player else None,

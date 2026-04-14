@@ -1493,6 +1493,9 @@ def sync_live_report_to_integrated_modules(player, report):
     if case_updates:
         case_updates.append("updated_at")
         case.save(update_fields=case_updates)
+    from valuation.ai_service import refresh_ai_insights_for_player
+
+    refresh_ai_insights_for_player(player)
     return case
 
 
@@ -1505,6 +1508,9 @@ def save_hbx_value_profile(player, cleaned_data, source=HBXValueProfile.Source.M
             **computed,
         },
     )
+    from valuation.ai_service import refresh_ai_insights_for_player
+
+    refresh_ai_insights_for_player(player)
     return profile
 
 
@@ -2209,6 +2215,9 @@ def save_player_bundle(user, cleaned_data, player=None):
         player._state.fields_cache.pop(relation_name, None)
     sync_integrated_player_modules(player)
     save_player_history_snapshot(player)
+    from valuation.ai_service import refresh_ai_insights_for_player
+
+    refresh_ai_insights_for_player(player)
     return player
 
 
@@ -2252,8 +2261,15 @@ def save_manual_history_snapshot(player, cleaned_data):
         for key, value in values.items():
             setattr(history_entry, key, value)
         history_entry.save()
+        from valuation.ai_service import refresh_ai_insights_for_player
+
+        refresh_ai_insights_for_player(player)
         return history_entry
-    return PlayerHistory.objects.create(player=player, date=cleaned_data["date"], **values)
+    history_entry = PlayerHistory.objects.create(player=player, date=cleaned_data["date"], **values)
+    from valuation.ai_service import refresh_ai_insights_for_player
+
+    refresh_ai_insights_for_player(player)
+    return history_entry
 
 
 def save_analyst_note(player, cleaned_data):
