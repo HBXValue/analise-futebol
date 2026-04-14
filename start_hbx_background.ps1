@@ -1,10 +1,23 @@
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverScript = Join-Path $projectRoot "start_lan_server.ps1"
 $pidFile = Join-Path $projectRoot "runserver.pid"
+$pythonExe = Join-Path $projectRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $serverScript)) {
     Write-Error "Script do servidor nao encontrado: start_lan_server.ps1"
     exit 1
+}
+
+if (-not (Test-Path $pythonExe)) {
+    Write-Error "Python da virtualenv nao encontrado em .venv\\Scripts\\python.exe"
+    exit 1
+}
+
+Write-Host "Aplicando migracoes pendentes..."
+& $pythonExe manage.py migrate
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Falha ao aplicar migracoes. O servidor nao foi iniciado."
+    exit $LASTEXITCODE
 }
 
 if (Test-Path $pidFile) {

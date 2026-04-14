@@ -92,6 +92,48 @@ python manage.py migrate
 gunicorn config.wsgi:application
 ```
 
+## Migrar dados locais para o Render
+
+O deploy publica o codigo, mas nao copia automaticamente o banco local SQLite para o PostgreSQL do Render.
+
+### 1. Exportar sua base local
+
+```powershell
+.\export_hbx_data.ps1
+```
+
+Isso gera:
+
+```text
+fixtures\hbx_data.json
+```
+
+### 2. Pegar a Database URL no Render
+
+No painel do Render:
+
+- abra o banco PostgreSQL do projeto
+- copie a `External Database URL`
+
+### 3. Importar para o banco do Render
+
+No PowerShell:
+
+```powershell
+$env:DATABASE_URL="COLE_A_EXTERNAL_DATABASE_URL_AQUI"
+.\import_hbx_data_to_render.ps1
+```
+
+Isso vai:
+
+- rodar `migrate` no banco do Render
+- importar paises, divisoes, clubes, atletas e dados relacionados
+
+Observacao:
+
+- o fluxo acima e ideal para um banco do Render ainda vazio ou praticamente vazio
+- se o banco do Render ja tiver dados conflitantes, a importacao pode falhar por chave primaria duplicada
+
 ## Testes
 
 ```bash

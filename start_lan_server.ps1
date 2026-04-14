@@ -8,6 +8,13 @@ if (-not (Test-Path $pythonExe)) {
     exit 1
 }
 
+Write-Host "Aplicando migracoes pendentes..."
+& $pythonExe manage.py migrate
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Falha ao aplicar migracoes. O servidor nao foi iniciado."
+    exit $LASTEXITCODE
+}
+
 $networkIps = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
     Where-Object { $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork } |
     ForEach-Object { $_.IPAddressToString } |
