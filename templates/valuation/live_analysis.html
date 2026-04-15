@@ -164,11 +164,28 @@
                     </div>
                     <div class="field-group">
                         <label for="equipe-atleta">Equipe</label>
-                        <input id="equipe-atleta" class="field-input" type="text">
+                        <input id="equipe-atleta" class="field-input" type="text" readonly placeholder="Preenchido pelo cadastro do atleta">
+                        <small style="color: var(--muted);">Ao selecionar um atleta cadastrado, a equipe vem automaticamente do perfil dele.</small>
                     </div>
                     <div class="field-group">
-                        <label for="adversario-atleta">Adversario</label>
-                        <input id="adversario-atleta" class="field-input" type="text">
+                        <label for="opponent-club-select">Adversario cadastrado</label>
+                        <select id="opponent-club-select" class="field-input">
+                            <option value="">Selecionar clube da base</option>
+                            {% for club in club_suggestions %}
+                                <option
+                                    value="{{ club.short_name|default:club.official_name }}"
+                                    data-country="{{ club.country.code }}"
+                                    data-division="{{ club.division.short_name|default:club.division.name }}"
+                                >
+                                    {{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.short_name|default:club.official_name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small style="color: var(--muted);">Use este campo quando o adversario ja existir na base.</small>
+                    </div>
+                    <div class="field-group">
+                        <label for="adversario-atleta">Adversario manual / amistoso</label>
+                        <input id="adversario-atleta" class="field-input" type="text" placeholder="Digite apenas se nao existir na base ou for amistoso">
                     </div>
                     <div class="field-group">
                         <label for="competicao-atleta">Competicao</label>
@@ -367,11 +384,20 @@
     }
 
     function syncGeneralInputs() {
+        const opponentSelect = document.getElementById("opponent-club-select");
+        const opponentInput = document.getElementById("adversario-atleta");
+        const opponentValue = state.informacoes_gerais.adversario || "";
         document.getElementById("nome-atleta").value = state.informacoes_gerais.nome_atleta || "";
         document.getElementById("numero-camisa").value = state.informacoes_gerais.numero_camisa || "";
         document.getElementById("posicao-atleta").value = state.informacoes_gerais.posicao || "";
         document.getElementById("equipe-atleta").value = state.informacoes_gerais.equipe || "";
-        document.getElementById("adversario-atleta").value = state.informacoes_gerais.adversario || "";
+        if (Array.from(opponentSelect.options).some((option) => option.value === opponentValue)) {
+            opponentSelect.value = opponentValue;
+            opponentInput.value = "";
+        } else {
+            opponentSelect.value = "";
+            opponentInput.value = opponentValue;
+        }
         document.getElementById("competicao-atleta").value = state.informacoes_gerais.competicao || "";
         document.getElementById("data-avaliacao").value = state.informacoes_gerais.data || "";
         document.getElementById("analista-responsavel").value = state.informacoes_gerais.analista_responsavel || "";
@@ -497,6 +523,7 @@
         const position = POSITION_SPECIFIC[state.informacoes_gerais.posicao] ? state.informacoes_gerais.posicao : "";
         ensurePositionState(position);
         syncAll();
+        filterOpponentOptions();
     }
 
     function updateAnalysisContextSummary() {
@@ -548,6 +575,23 @@
         updateAnalysisContextSummary();
     }
 
+    function filterOpponentOptions() {
+        const countryValue = document.getElementById("player-country-filter").value || "";
+        const divisionValue = document.getElementById("player-division-filter").value || "";
+        const athleteTeam = document.getElementById("equipe-atleta").value || "";
+        const opponentSelect = document.getElementById("opponent-club-select");
+        Array.from(opponentSelect.options).forEach((option, index) => {
+            if (index === 0) return;
+            const countryMatches = !countryValue || option.dataset.country === countryValue;
+            const divisionMatches = !divisionValue || option.dataset.division === divisionValue;
+            const isAthleteTeam = athleteTeam && option.value === athleteTeam;
+            option.hidden = !(countryMatches && divisionMatches) || isAthleteTeam;
+        });
+        if (opponentSelect.selectedOptions[0]?.hidden) {
+            opponentSelect.value = "";
+        }
+    }
+
     function filterPlayerOptions() {
         const countryValue = document.getElementById("player-country-filter").value || "";
         const divisionValue = document.getElementById("player-division-filter").value || "";
@@ -572,8 +616,6 @@
             ["nome-atleta", "nome_atleta"],
             ["numero-camisa", "numero_camisa"],
             ["posicao-atleta", "posicao"],
-            ["equipe-atleta", "equipe"],
-            ["adversario-atleta", "adversario"],
             ["competicao-atleta", "competicao"],
             ["data-avaliacao", "data"],
             ["analista-responsavel", "analista_responsavel"],
@@ -589,6 +631,14 @@
                     syncCounterCards();
                 }
             });
+        });
+        document.getElementById("opponent-club-select").addEventListener("change", (event) => {
+            state.informacoes_gerais.adversario = event.target.value;
+            document.getElementById("adversario-atleta").value = "";
+        });
+        document.getElementById("adversario-atleta").addEventListener("input", (event) => {
+            state.informacoes_gerais.adversario = event.target.value;
+            document.getElementById("opponent-club-select").value = "";
         });
     }
 
@@ -698,15 +748,18 @@
             document.getElementById("player-club-filter").value = "";
             filterDivisionOptions();
             filterClubOptions();
+            filterOpponentOptions();
             filterPlayerOptions();
         });
         document.getElementById("player-division-filter").addEventListener("change", () => {
             document.getElementById("player-club-filter").value = "";
             filterClubOptions();
+            filterOpponentOptions();
             filterPlayerOptions();
         });
         document.getElementById("player-club-filter").addEventListener("change", () => {
             filterPlayerOptions();
+            filterOpponentOptions();
             updateAnalysisContextSummary();
         });
         document.getElementById("player-search").addEventListener("input", filterPlayerOptions);
@@ -731,6 +784,9 @@
     }
 
     document.getElementById("live-evaluation-form").addEventListener("submit", (event) => {
+        const opponentManual = document.getElementById("adversario-atleta").value.trim();
+        const opponentSelected = document.getElementById("opponent-club-select").value;
+        state.informacoes_gerais.adversario = opponentManual || opponentSelected;
         state.metadados.origem_dados_fisicos = state.indicadores_fisicos.fonte;
         state.indicadores_especificos_posicao.grupo_posicao = state.informacoes_gerais.posicao;
         document.getElementById("payload-json").value = JSON.stringify(state);
@@ -744,6 +800,7 @@
     bindTopControls();
     filterDivisionOptions();
     filterClubOptions();
+    filterOpponentOptions();
     filterPlayerOptions();
     ensurePositionState(state.informacoes_gerais.posicao || state.indicadores_especificos_posicao.grupo_posicao || "");
     syncAll();

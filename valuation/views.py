@@ -256,17 +256,41 @@ def _position_group_from_label(position_label):
     return ""
 
 
-def _hydrate_payload_from_player(payload, player):
-    payload["informacoes_gerais"]["nome_atleta"] = player.name
-    payload["informacoes_gerais"]["posicao"] = _position_group_from_label(player.position) or player.position
-    payload["informacoes_gerais"]["equipe"] = player.club_origin
-    payload["informacoes_gerais"]["player_id"] = str(player.id)
-    position_group = _position_group_from_label(payload["informacoes_gerais"]["posicao"])
-    payload["indicadores_especificos_posicao"]["grupo_posicao"] = position_group
-    payload["indicadores_especificos_posicao"]["valores"] = _default_counter_block(
-        POSITION_SPECIFIC_INDICATORS.get(position_group, [])
+def _player_club_name(player):
+    if player.club_reference_id:
+        return player.club_reference.short_name or player.club_reference.official_name
+    return player.club_origin or ""
+
+
+def _player_division_name(player):
+    if player.division_reference_id:
+        return player.division_reference.short_name or player.division_reference.name
+    return player.league_level or ""
+
+
+def _apply_player_identity_to_live_payload(payload, player):
+    general_info = payload["informacoes_gerais"]
+    position = _position_group_from_label(player.position) or player.position
+    existing_position_values = payload["indicadores_especificos_posicao"].get("valores", {})
+    general_info.update(
+        {
+            "nome_atleta": player.name,
+            "posicao": position,
+            "equipe": _player_club_name(player),
+            "player_id": str(player.id),
+        }
     )
+    position_group = _position_group_from_label(position)
+    payload["indicadores_especificos_posicao"]["grupo_posicao"] = position_group
+    payload["indicadores_especificos_posicao"]["valores"] = {
+        indicator: _coerce_non_negative_int(existing_position_values.get(indicator, 0))
+        for indicator in POSITION_SPECIFIC_INDICATORS.get(position_group, [])
+    }
     return payload
+
+
+def _hydrate_payload_from_player(payload, player):
+    return _apply_player_identity_to_live_payload(payload, player)
 
 
 def _coerce_non_negative_int(value):
@@ -667,11 +691,11 @@ def live_analysis_view(request):
                 {
                     "id": player.id,
                     "name": player.name,
-                    "team": player.club_origin,
+                    "team": _player_club_name(player),
                     "position_group": _position_group_from_label(player.position),
                     "country_code": player.division_reference.country.code if player.division_reference_id else "",
-                    "division_name": player.division_reference.short_name if player.division_reference_id and player.division_reference.short_name else (player.league_level or ""),
-                    "club_name": player.club_reference.short_name if player.club_reference_id and player.club_reference.short_name else (player.club_origin or ""),
+                    "division_name": _player_division_name(player),
+                    "club_name": _player_club_name(player),
                 }
                 for player in players
             ],
@@ -1023,6 +1047,8 @@ def live_analysis_session_view(request):
     if player_id:
         player = get_object_or_404(Player, pk=player_id, user=current_user)
         sync_integrated_player_modules(player)
+        payload = _apply_player_identity_to_live_payload(payload, player)
+        general_info = payload["informacoes_gerais"]
 
     report_id = request.POST.get("report_id")
     report = None

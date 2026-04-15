@@ -778,6 +778,63 @@ class ValuationViewsTests(TestCase):
         analyst_note = AnalystNote.objects.get(player=player, date="2026-04-09")
         self.assertIn("Entrou bem no jogo.", analyst_note.analysis_text)
 
+    def test_live_analysis_uses_registered_player_identity_when_selected(self):
+        user = User.objects.create(email="identity@club.com", password_hash=make_password("secretpass"))
+        country = Country.objects.get(code="BRA")
+        division = Division.objects.filter(country=country, level=1).first()
+        if division is None:
+            division = Division.objects.create(country=country, name="Serie A", short_name="Serie A", level=1)
+        club = Club.objects.create(country=country, division=division, official_name="Sociedade Esportiva Palmeiras", short_name="Palmeiras")
+        opponent = Club.objects.create(country=country, division=division, official_name="Santos Futebol Clube", short_name="Santos")
+        player = Player.objects.create(
+            user=user,
+            name="Rafael Dias",
+            age=19,
+            position="Atacante",
+            current_value=Decimal("1000000.00"),
+            league_level="Cadastro antigo",
+            club_origin="Cadastro antigo",
+            division_reference=division,
+            club_reference=club,
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+        payload = {
+            "informacoes_gerais": {
+                "nome_atleta": "Nome digitado errado",
+                "numero_camisa": "9",
+                "posicao": "Meia / armador",
+                "equipe": "Equipe digitada errada",
+                "adversario": opponent.short_name,
+                "competicao": "Serie A",
+                "data": "2026-04-10",
+                "analista_responsavel": "Scout 1",
+                "minutos_jogados": "90",
+                "observacao_inicial": "",
+                "player_id": str(player.id),
+            },
+            "indicadores_tecnicos": {},
+            "indicadores_defensivos": {},
+            "indicadores_taticos": {},
+            "indicadores_fisicos": {"fonte": "manual", "arquivo_nome": "", "valores": {}},
+            "indicadores_psicologicos": {},
+            "indicadores_especificos_posicao": {"grupo_posicao": "", "valores": {}},
+            "avaliacao_geral": {"resumo_do_desempenho": ""},
+            "metadados": {"origem_dados_fisicos": "manual"},
+        }
+        self.client.post(reverse("live-analysis-session"), {"payload_json": json.dumps(payload)})
+        report = LivePlayerEvaluation.objects.get(player=player)
+        self.assertEqual(report.athlete_name, "Rafael Dias")
+        self.assertEqual(report.position, "Atacante")
+        self.assertEqual(report.team, "Palmeiras")
+        self.assertEqual(report.opponent, "Santos")
+        self.assertEqual(report.payload["informacoes_gerais"]["equipe"], "Palmeiras")
+
     def test_live_analysis_page_renders(self):
         user = User.objects.create(email="live@club.com", password_hash=make_password("secretpass"))
         player = Player.objects.create(
