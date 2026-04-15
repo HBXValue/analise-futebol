@@ -1187,7 +1187,6 @@ def player_create_view(request):
         "t": get_translations(lang),
         "languages": LANGUAGES,
     }
-    context.update(build_global_player_context(request, current_user))
     return render(request, "valuation/player_form.html", context)
 
 
@@ -1232,7 +1231,6 @@ def player_edit_view(request, player_id):
         "t": get_translations(lang),
         "languages": LANGUAGES,
     }
-    context.update(build_global_player_context(request, current_user, player))
     return render(request, "valuation/player_form.html", context)
 
 
