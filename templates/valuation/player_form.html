@@ -31,6 +31,22 @@
             <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(0, 224, 184, 0.08); border: 1px solid rgba(0, 224, 184, 0.2); color: var(--muted);">
                 Voce pode salvar o atleta agora com os dados basicos e voltar depois para completar performance, mercado, marketing e comportamento.
             </div>
+            {% if form.errors %}
+                <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(255, 107, 107, 0.08); border: 1px solid rgba(255, 107, 107, 0.22);">
+                    <strong style="display: block; margin-bottom: 8px;">Nao foi possivel salvar o atleta</strong>
+                    <div style="color: var(--muted); margin-bottom: 8px;">Revise os campos abaixo que ainda precisam de ajuste.</div>
+                    <ul style="margin: 0; padding-left: 18px; color: var(--muted);">
+                        {% for field in form %}
+                            {% if field.errors %}
+                                <li>{{ field.label }}: {{ field.errors|join:", " }}</li>
+                            {% endif %}
+                        {% endfor %}
+                        {% for error in form.non_field_errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
             <form method="post">
                 {% csrf_token %}
                 <datalist id="division-suggestions">

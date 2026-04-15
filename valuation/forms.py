@@ -355,7 +355,7 @@ class PlayerValuationForm(forms.Form):
             if calculated_age < 14 or calculated_age > 45:
                 self.add_error("birth_date", "A idade calculada precisa ficar entre 14 e 45 anos.")
         elif age is None:
-            self.add_error("birth_date", "Informe a data de nascimento para calcular a idade.")
+            cleaned_data["age"] = 18
         return cleaned_data
 
 
