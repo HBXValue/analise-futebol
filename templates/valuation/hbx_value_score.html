@@ -1,7 +1,26 @@
 {% extends "valuation/base.html" %}
 {% block title %}Market Intelligence | HBX{% endblock %}
 {% block body %}
-<section class="live-shell">
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>Market Intelligence</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}?lang={{ lang }}">Dashboard</a>
+            <a href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a class="active" href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a href="{% url 'data' %}?lang={{ lang }}">Data</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
     {% include "valuation/_global_player_bar.html" %}
     {% if messages %}
         <div class="messages">
@@ -16,16 +35,6 @@
             <span class="pill">Market Intelligence</span>
             <h1 style="margin: 12px 0 8px;">Market Intelligence aplicado ao futebol</h1>
             <p>Configure as fontes do atleta, registre a coleta e consolide os dados que vao alimentar o dashboard individual.</p>
-            <div class="actions">
-                <a class="button button-secondary" href="{% url 'dashboard' %}?lang={{ lang }}">Dashboard</a>
-                <a class="button button-secondary" href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
-                <a class="button button-secondary" href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
-                {% if selected_player %}
-                    <a class="button button-secondary" href="{% url 'live-analysis' %}?player={{ selected_player.id }}&lang={{ lang }}">Match Analysis</a>
-                {% endif %}
-                <a class="button button-secondary" href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
-                <a class="button button-secondary" href="{% url 'data' %}?lang={{ lang }}">Data</a>
-            </div>
         </div>
 
         <div class="panel live-control-panel">
@@ -455,7 +464,8 @@
             </article>
         </div>
     </form>
-</section>
+    </main>
+</div>
 
 <script>
     const selectedSeed = {{ selected_seed_json|safe }};
