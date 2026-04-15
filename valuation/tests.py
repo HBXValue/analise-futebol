@@ -593,6 +593,27 @@ class ValuationViewsTests(TestCase):
         response = self.client.get(reverse("dashboard"))
         self.assertRedirects(response, reverse("login"))
 
+    def test_player_create_redirects_to_edit_for_continuation(self):
+        user = User.objects.create(email="create-edit@club.com", password_hash=make_password("secretpass"))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("player-create"),
+            {
+                "name": "Carlos Ponte",
+                "birth_date": "",
+                "position": "Centroavante",
+                "current_value": "900000.00",
+                "league_level": "Serie B",
+                "club_origin": "Sport Recife",
+            },
+        )
+
+        player = Player.objects.get(user=user, name="Carlos Ponte")
+        self.assertRedirects(response, f"{reverse('player-edit', args=[player.id])}?lang=pt")
+
     def test_logged_user_can_create_manual_snapshot(self):
         user = User.objects.create(email="agent@club.com", password_hash=make_password("secretpass"))
         player = Player.objects.create(

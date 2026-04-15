@@ -47,6 +47,30 @@
                     </ul>
                 </div>
             {% endif %}
+            {% if recent_players %}
+                <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div style="display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                        <strong>Atletas recentes</strong>
+                        <span style="color: var(--muted);">Clique em editar para voltar facilmente a um cadastro incompleto.</span>
+                    </div>
+                    <div class="progress-stack">
+                        {% for recent_player in recent_players %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ recent_player.name }}</div>
+                                    <div class="progress-values">
+                                        <span>{{ recent_player.position }}</span>
+                                        <span>{% if recent_player.division_reference_id %}{{ recent_player.division_reference.country.name }} | {{ recent_player.division_reference.short_name|default:recent_player.league_level }} | {% endif %}{{ recent_player.club_reference.short_name|default:recent_player.club_origin }}</span>
+                                    </div>
+                                </div>
+                                <div class="actions">
+                                    <a class="button button-secondary" href="{% url 'player-edit' recent_player.id %}?lang={{ lang }}">Editar</a>
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
             <form method="post">
                 {% csrf_token %}
                 <datalist id="division-suggestions">

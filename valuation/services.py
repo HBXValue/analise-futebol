@@ -537,6 +537,10 @@ def _coalesce_metric(value, fallback):
     return numeric if numeric > 0 else fallback
 
 
+def _zero_if_none(value):
+    return 0 if value is None else value
+
+
 def _weighted_average(weighted_values):
     total_weight = 0.0
     total_value = 0.0
@@ -2236,20 +2240,20 @@ def save_player_bundle(user, cleaned_data, player=None):
         player.save()
 
     PerformanceMetrics.objects.filter(player=player).update(
-        xg=cleaned_data["xg"],
-        xa=cleaned_data["xa"],
-        passes_pct=cleaned_data["passes_pct"],
-        dribbles_pct=cleaned_data["dribbles_pct"],
-        tackles_pct=cleaned_data["tackles_pct"],
-        high_intensity_distance=cleaned_data["high_intensity_distance"],
-        final_third_recoveries=cleaned_data["final_third_recoveries"],
+        xg=_zero_if_none(cleaned_data["xg"]),
+        xa=_zero_if_none(cleaned_data["xa"]),
+        passes_pct=_zero_if_none(cleaned_data["passes_pct"]),
+        dribbles_pct=_zero_if_none(cleaned_data["dribbles_pct"]),
+        tackles_pct=_zero_if_none(cleaned_data["tackles_pct"]),
+        high_intensity_distance=_zero_if_none(cleaned_data["high_intensity_distance"]),
+        final_third_recoveries=_zero_if_none(cleaned_data["final_third_recoveries"]),
     )
     MarketMetrics.objects.filter(player=player).update(
-        annual_growth=cleaned_data["annual_growth"],
-        club_interest=cleaned_data["club_interest"],
-        league_score=cleaned_data["league_score"],
-        age_factor=cleaned_data["age_factor"],
-        club_reputation=cleaned_data["club_reputation"],
+        annual_growth=_zero_if_none(cleaned_data["annual_growth"]),
+        club_interest=_zero_if_none(cleaned_data["club_interest"]),
+        league_score=_zero_if_none(cleaned_data["league_score"]),
+        age_factor=_zero_if_none(cleaned_data["age_factor"]),
+        club_reputation=_zero_if_none(cleaned_data["club_reputation"]),
     )
     network_followers = sum(
         float(cleaned_data.get(field) or 0)
@@ -2285,17 +2289,17 @@ def save_player_bundle(user, cleaned_data, player=None):
         collection_notes=cleaned_data.get("collection_notes", ""),
         followers=consolidated_followers,
         engagement=consolidated_engagement,
-        media_mentions=cleaned_data["media_mentions"],
-        sponsorships=cleaned_data["sponsorships"],
-        sentiment_score=cleaned_data["sentiment_score"],
+        media_mentions=_zero_if_none(cleaned_data["media_mentions"]),
+        sponsorships=_zero_if_none(cleaned_data["sponsorships"]),
+        sentiment_score=_zero_if_none(cleaned_data["sentiment_score"]),
     )
     BehaviorMetrics.objects.filter(player=player).update(
-        conscientiousness=cleaned_data["conscientiousness"],
-        adaptability=cleaned_data["adaptability"],
-        resilience=cleaned_data["resilience"],
-        deliberate_practice=cleaned_data["deliberate_practice"],
-        executive_function=cleaned_data["executive_function"],
-        leadership=cleaned_data["leadership"],
+        conscientiousness=_zero_if_none(cleaned_data["conscientiousness"]),
+        adaptability=_zero_if_none(cleaned_data["adaptability"]),
+        resilience=_zero_if_none(cleaned_data["resilience"]),
+        deliberate_practice=_zero_if_none(cleaned_data["deliberate_practice"]),
+        executive_function=_zero_if_none(cleaned_data["executive_function"]),
+        leadership=_zero_if_none(cleaned_data["leadership"]),
     )
     for relation_name in ("performance_metrics", "market_metrics", "marketing_metrics", "behavior_metrics"):
         player._state.fields_cache.pop(relation_name, None)

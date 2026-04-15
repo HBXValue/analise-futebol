@@ -1163,17 +1163,23 @@ def player_create_view(request):
     lang = get_language(request)
     current_user = get_current_user(request)
     form = PlayerValuationForm(request.POST or None, lang=lang)
+    recent_players = list(
+        Player.objects.filter(user=current_user)
+        .select_related("division_reference__country", "club_reference")
+        .order_by("-id")[:8]
+    )
     countries = list(Country.objects.filter(is_active=True).order_by("name"))
     divisions = list(Division.objects.filter(is_active=True).select_related("country").order_by("country__name", "scope", "state", "level", "name"))
     clubs = list(Club.objects.filter(status=Club.Status.ACTIVE).select_related("country", "division").order_by("official_name"))
     if request.method == "POST" and form.is_valid():
-        save_player_bundle(current_user, form.cleaned_data)
-        messages.success(request, tr(lang, "player_saved"))
-        return redirect("dashboard")
+        player = save_player_bundle(current_user, form.cleaned_data)
+        messages.success(request, f"{tr(lang, 'player_saved')} Continue preenchendo o atleta na tela de edicao.")
+        return redirect(f"{reverse('player-edit', args=[player.id])}?lang={lang}")
     context = {
         "form": form,
         "current_user": current_user,
         "page_title": tr(lang, "new_player"),
+        "recent_players": recent_players,
         "countries": countries,
         "division_suggestions": divisions,
         "club_suggestions": clubs,
@@ -1201,6 +1207,11 @@ def player_edit_view(request, player_id):
         user=current_user,
     )
     form = PlayerValuationForm(request.POST or None, player=player, lang=lang)
+    recent_players = list(
+        Player.objects.filter(user=current_user)
+        .select_related("division_reference__country", "club_reference")
+        .order_by("-id")[:8]
+    )
     countries = list(Country.objects.filter(is_active=True).order_by("name"))
     divisions = list(Division.objects.filter(is_active=True).select_related("country").order_by("country__name", "scope", "state", "level", "name"))
     clubs = list(Club.objects.filter(status=Club.Status.ACTIVE).select_related("country", "division").order_by("official_name"))
@@ -1213,6 +1224,7 @@ def player_edit_view(request, player_id):
         "current_user": current_user,
         "page_title": f"{tr(lang, 'edit')} {player.name}",
         "player": player,
+        "recent_players": recent_players,
         "countries": countries,
         "division_suggestions": divisions,
         "club_suggestions": clubs,
