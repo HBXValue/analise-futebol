@@ -28,6 +28,9 @@
             <p>{{ t.hero_text }}</p>
         </section>
         <section class="panel">
+            <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(0, 224, 184, 0.08); border: 1px solid rgba(0, 224, 184, 0.2); color: var(--muted);">
+                Voce pode salvar o atleta agora com os dados basicos e voltar depois para completar performance, mercado, marketing e comportamento.
+            </div>
             <form method="post">
                 {% csrf_token %}
                 <datalist id="division-suggestions">

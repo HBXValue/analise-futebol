@@ -948,6 +948,59 @@ class ValuationViewsTests(TestCase):
         self.assertEqual(profile.source_targets["google_news"]["query"], "Joao Teste")
         self.assertEqual(profile.source_collection["google_news"]["articles"][0]["source"], "ge")
 
+    @patch("valuation.views.fetch_instagram_signals")
+    def test_hbx_value_score_can_collect_instagram_by_handle(self, mocked_fetch):
+        mocked_fetch.return_value = {
+            "handle": "@marciosantos",
+            "username": "marciosantos",
+            "name": "Marcio Santos",
+            "biography": "Atleta profissional",
+            "website": "https://example.com",
+            "profile_picture_url": "https://example.com/profile.jpg",
+            "followers_count": 185000,
+            "media_count": 214,
+            "mentions": 214,
+            "momentum": 61.5,
+            "sentiment": 60.0,
+            "reach": 58.2,
+            "authority": 63.7,
+        }
+        user = User.objects.create(email="hbx-ig@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Marcio Santos",
+            age=22,
+            position="Atacante",
+            current_value=Decimal("1500000.00"),
+            league_level="Série B",
+            club_origin="Sport Recife",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            reverse("hbx-value-score"),
+            {
+                "player_id": player.id,
+                "action": "fetch_instagram",
+                "instagram_handle": "@marciosantos",
+                "narrative_keywords": "promissor",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('hbx-value-score')}?player={player.id}&lang=pt")
+        mocked_fetch.assert_called_once_with("@marciosantos")
+        profile = HBXValueProfile.objects.get(player=player)
+        self.assertEqual(profile.source, "ai")
+        self.assertEqual(profile.source_targets["instagram"]["handle"], "@marciosantos")
+        self.assertEqual(profile.source_collection["instagram"]["profile"]["username"], "marciosantos")
+        self.assertEqual(profile.source_collection["instagram"]["profile"]["followers_count"], 185000)
+
     @patch("valuation.views.fetch_youtube_signals")
     def test_hbx_value_score_can_collect_youtube_by_player_name(self, mocked_fetch):
         mocked_fetch.return_value = {

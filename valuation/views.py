@@ -26,6 +26,7 @@ from valuation.services import (
     clamp,
     compute_hbx_value_profile,
     fetch_tiktok_signals,
+    fetch_instagram_signals,
     fetch_youtube_signals,
     fetch_google_news_signals,
     comparison_chart_data,
@@ -738,6 +739,13 @@ def hbx_value_score_view(request):
         action = request.POST.get("action") or "save_profile"
         profile_input = {
             "instagram_handle": request.POST.get("instagram_handle"),
+            "instagram_username": request.POST.get("instagram_username"),
+            "instagram_name": request.POST.get("instagram_name"),
+            "instagram_biography": request.POST.get("instagram_biography"),
+            "instagram_website": request.POST.get("instagram_website"),
+            "instagram_profile_picture_url": request.POST.get("instagram_profile_picture_url"),
+            "instagram_followers_count": request.POST.get("instagram_followers_count"),
+            "instagram_media_count": request.POST.get("instagram_media_count"),
             "google_news_query": request.POST.get("google_news_query"),
             "google_news_rss": request.POST.get("google_news_rss"),
             "youtube_channel_id": request.POST.get("youtube_channel_id"),
@@ -777,7 +785,33 @@ def hbx_value_score_view(request):
             "manual_note": request.POST.get("manual_note"),
             "narrative_keywords": [item.strip() for item in request.POST.get("narrative_keywords", "").split(",") if item.strip()],
         }
-        if action == "fetch_google_news":
+        if action == "fetch_instagram":
+            handle = profile_input["instagram_handle"]
+            try:
+                instagram = fetch_instagram_signals(handle)
+            except Exception:
+                messages.error(request, "Nao foi possivel consultar o Instagram agora. A busca oficial depende da Meta Graph API e de uma conta profissional acessivel.")
+                return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
+            profile_input.update(
+                {
+                    "instagram_handle": instagram["handle"],
+                    "instagram_username": instagram["username"],
+                    "instagram_name": instagram["name"],
+                    "instagram_biography": instagram["biography"],
+                    "instagram_website": instagram["website"],
+                    "instagram_profile_picture_url": instagram["profile_picture_url"],
+                    "instagram_followers_count": instagram["followers_count"],
+                    "instagram_media_count": instagram["media_count"],
+                    "instagram_mentions": instagram["mentions"],
+                    "instagram_momentum": instagram["momentum"],
+                    "instagram_sentiment": instagram["sentiment"],
+                    "instagram_reach": instagram["reach"],
+                    "instagram_authority": instagram["authority"],
+                }
+            )
+            save_hbx_value_profile(selected_player, profile_input, source="ai")
+            messages.success(request, "Instagram coletado e integrado ao perfil do atleta.")
+        elif action == "fetch_google_news":
             query = profile_input["google_news_query"] or selected_player.name
             try:
                 google_news = fetch_google_news_signals(query, profile_input["google_news_rss"])

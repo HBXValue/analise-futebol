@@ -154,6 +154,8 @@ if database_url:
         )
     }
 else:
+    if not DEBUG:
+        raise RuntimeError("DATABASE_URL obrigatoria em producao.")
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",

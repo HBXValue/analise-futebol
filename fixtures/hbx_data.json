@@ -2644,7 +2644,7 @@
   "model": "clubs.club",
   "pk": 153,
   "fields": {
-    "created_at": "2026-04-12T23:39:55.000Z",
+    "created_at": "2026-04-12T23:39:55Z",
     "updated_at": "2026-04-12T23:44:22.835Z",
     "slug": "serra-branca-ec",
     "country": 1,
@@ -9732,7 +9732,7 @@
   "pk": 530,
   "fields": {
     "created_at": "2026-04-13T16:41:31.991Z",
-    "updated_at": "2026-04-13T16:41:32.000Z",
+    "updated_at": "2026-04-13T16:41:32Z",
     "slug": "toluca",
     "country": 11,
     "division": 20,
@@ -10938,88 +10938,88 @@
       "A base tecnica ainda limita a valorizacao. O foco deve ser ganho de performance antes de aumentar exposicao."
     ],
     "source_targets": {
+      "manual": {
+        "context": ""
+      },
+      "tiktok": {
+        "query": "Araújo",
+        "handle": ""
+      },
+      "youtube": {
+        "query": "João Araújo highlights Grêmio volante",
+        "channel_id": ""
+      },
       "instagram": {
         "handle": "@_jvaraujo05"
       },
       "google_news": {
         "query": "João Araújo Cuiabá volante",
         "rss_url": "https://news.google.com/search?q=jo%C3%A3o%20ara%C3%BAjo%20Cuiab%C3%A1%20Volante&hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
-      },
-      "youtube": {
-        "channel_id": "",
-        "query": "João Araújo highlights Grêmio volante"
-      },
-      "tiktok": {
-        "handle": "",
-        "query": "Araújo"
-      },
-      "manual": {
-        "context": ""
       }
     },
     "source_collection": {
-      "instagram": {
-        "mentions": 5,
-        "momentum": 65.0,
-        "sentiment": 75.0,
-        "reach": 11.3,
-        "authority": 32.5
-      },
-      "google_news": {
-        "mentions": 2,
-        "momentum": 60.0,
-        "sentiment": 75.0,
-        "reach": 9.6,
-        "authority": 37.5,
-        "articles": []
-      },
-      "youtube": {
-        "mentions": 1,
-        "momentum": 52.0,
-        "sentiment": 75.0,
-        "reach": 9.1,
-        "authority": 33.7,
-        "videos": []
-      },
-      "tiktok": {
-        "mentions": 1,
-        "momentum": 55.5,
-        "sentiment": 75.0,
-        "reach": 10.2,
-        "authority": 58.0,
-        "videos": []
-      },
       "manual": {
+        "reach": 0,
         "mentions": 0,
         "momentum": 0,
-        "sentiment": 75.0,
-        "reach": 0,
         "authority": 50.0,
-        "performance_rating": 37.6,
+        "sentiment": 75.0,
         "attention_spike": 48.2,
         "market_response": 19.4,
-        "visibility_efficiency": 29.7,
-        "qualitative_note": ""
+        "qualitative_note": "",
+        "performance_rating": 37.6,
+        "visibility_efficiency": 29.7
+      },
+      "tiktok": {
+        "reach": 10.2,
+        "videos": [],
+        "mentions": 1,
+        "momentum": 55.5,
+        "authority": 58.0,
+        "sentiment": 75.0
+      },
+      "youtube": {
+        "reach": 9.1,
+        "videos": [],
+        "mentions": 1,
+        "momentum": 52.0,
+        "authority": 33.7,
+        "sentiment": 75.0
+      },
+      "instagram": {
+        "reach": 11.3,
+        "mentions": 5,
+        "momentum": 65.0,
+        "authority": 32.5,
+        "sentiment": 75.0
+      },
+      "google_news": {
+        "reach": 9.6,
+        "articles": [],
+        "mentions": 2,
+        "momentum": 60.0,
+        "authority": 37.5,
+        "sentiment": 75.0
       }
     },
     "delivery_payload": {
       "dashboard": {
-        "market_perception_index": 38.77,
         "trend_label": "Queda",
-        "narrative_label": "Irregular",
         "market_label": "Percepcao fragil",
+        "source_count": 5,
+        "narrative_label": "Irregular",
         "narrative_summary": "A atencao nao se converteu em confianca. O posicionamento precisa de consistencia competitiva.",
-        "source_count": 5
+        "market_perception_index": 38.77
       },
+      "manual_note": "",
       "integrated_indicators": {
         "mention_volume": 9,
-        "sentiment_score": 75.0,
         "estimated_reach": 9.5,
+        "sentiment_score": 75.0,
         "source_relevance": 42.34,
-        "performance_impact_score": 40.38,
-        "impact_correlation_score": 29.65
-      },
-      "manual_note": ""
+        "impact_correlation_score": 29.65,
+        "performance_impact_score": 40.38
+      }
     },
     "updated_at": "2026-04-13T13:08:39.172Z",
     "created_at": "2026-04-13T13:08:39.172Z"
@@ -11056,88 +11056,88 @@
       "A base tecnica ainda limita a valorizacao. O foco deve ser ganho de performance antes de aumentar exposicao."
     ],
     "source_targets": {
+      "manual": {
+        "context": ""
+      },
+      "tiktok": {
+        "query": "Aloísio",
+        "handle": ""
+      },
+      "youtube": {
+        "query": "Aloísio Neto zagueiro Ceará highlights",
+        "channel_id": ""
+      },
       "instagram": {
         "handle": "@aloisio_neto2"
       },
       "google_news": {
         "query": "Aloísio Ceará base",
         "rss_url": "https://news.google.com/search?q=Alo%C3%ADsio%20Cear%C3%A1%20base&hl=pt-BR&gl=BR&ceid=BR%3Apt-419"
-      },
-      "youtube": {
-        "channel_id": "",
-        "query": "Aloísio Neto zagueiro Ceará highlights"
-      },
-      "tiktok": {
-        "handle": "",
-        "query": "Aloísio"
-      },
-      "manual": {
-        "context": ""
       }
     },
     "source_collection": {
-      "instagram": {
-        "mentions": 3,
-        "momentum": 70.0,
-        "sentiment": 72.0,
-        "reach": 16.9,
-        "authority": 27.5
-      },
-      "google_news": {
-        "mentions": 1,
-        "momentum": 65.0,
-        "sentiment": 72.0,
-        "reach": 14.4,
-        "authority": 57.5,
-        "articles": []
-      },
-      "youtube": {
-        "mentions": 1,
-        "momentum": 56.0,
-        "sentiment": 72.0,
-        "reach": 13.5,
-        "authority": 51.7,
-        "videos": []
-      },
-      "tiktok": {
-        "mentions": 0,
-        "momentum": 60.0,
-        "sentiment": 72.0,
-        "reach": 15.2,
-        "authority": 58.0,
-        "videos": []
-      },
       "manual": {
+        "reach": 0,
         "mentions": 0,
         "momentum": 0,
-        "sentiment": 72.0,
-        "reach": 0,
         "authority": 50.0,
-        "performance_rating": 39.0,
+        "sentiment": 72.0,
         "attention_spike": 49.8,
         "market_response": 23.2,
-        "visibility_efficiency": 38.3,
-        "qualitative_note": ""
+        "qualitative_note": "",
+        "performance_rating": 39.0,
+        "visibility_efficiency": 38.3
+      },
+      "tiktok": {
+        "reach": 15.2,
+        "videos": [],
+        "mentions": 0,
+        "momentum": 60.0,
+        "authority": 58.0,
+        "sentiment": 72.0
+      },
+      "youtube": {
+        "reach": 13.5,
+        "videos": [],
+        "mentions": 1,
+        "momentum": 56.0,
+        "authority": 51.7,
+        "sentiment": 72.0
+      },
+      "instagram": {
+        "reach": 16.9,
+        "mentions": 3,
+        "momentum": 70.0,
+        "authority": 27.5,
+        "sentiment": 72.0
+      },
+      "google_news": {
+        "reach": 14.4,
+        "articles": [],
+        "mentions": 1,
+        "momentum": 65.0,
+        "authority": 57.5,
+        "sentiment": 72.0
       }
     },
     "delivery_payload": {
       "dashboard": {
-        "market_perception_index": 39.59,
         "trend_label": "Queda",
-        "narrative_label": "Irregular",
         "market_label": "Percepcao fragil",
+        "source_count": 5,
+        "narrative_label": "Irregular",
         "narrative_summary": "A atencao nao se converteu em confianca. O posicionamento precisa de consistencia competitiva.",
-        "source_count": 5
+        "market_perception_index": 39.59
       },
+      "manual_note": "",
       "integrated_indicators": {
         "mention_volume": 5,
-        "sentiment_score": 72.0,
         "estimated_reach": 13.4,
+        "sentiment_score": 72.0,
         "source_relevance": 48.94,
-        "performance_impact_score": 42.54,
-        "impact_correlation_score": 33.33
-      },
-      "manual_note": ""
+        "impact_correlation_score": 33.33,
+        "performance_impact_score": 42.54
+      }
     },
     "updated_at": "2026-04-13T21:47:02.453Z",
     "created_at": "2026-04-13T21:47:02.453Z"

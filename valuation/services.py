@@ -566,6 +566,15 @@ def _build_hbx_source_payload(seed):
                 "sentiment": _safe_float(seed.get("instagram_sentiment")),
                 "reach": _safe_float(seed.get("instagram_reach")),
                 "authority": _safe_float(seed.get("instagram_authority")),
+                "profile": {
+                    "username": _safe_text(seed.get("instagram_username")),
+                    "name": _safe_text(seed.get("instagram_name")),
+                    "biography": _safe_text(seed.get("instagram_biography")),
+                    "website": _safe_text(seed.get("instagram_website")),
+                    "profile_picture_url": _safe_text(seed.get("instagram_profile_picture_url")),
+                    "followers_count": _safe_int(seed.get("instagram_followers_count")),
+                    "media_count": _safe_int(seed.get("instagram_media_count")),
+                },
             },
         },
         "google_news": {
@@ -643,6 +652,76 @@ HIGH_AUTHORITY_SOURCES = (
 YOUTUBE_HIGH_AUTHORITY_CHANNELS = (
     "ge", "espn", "tntsports", "uol", "lance", "cazetv", "goal", "premiere",
 )
+
+
+def _normalize_social_handle(value):
+    normalized = _safe_text(value).strip()
+    if not normalized:
+        return ""
+    return normalized[1:] if normalized.startswith("@") else normalized
+
+
+def fetch_instagram_signals(handle):
+    access_token = os.environ.get("INSTAGRAM_GRAPH_ACCESS_TOKEN", "").strip()
+    ig_user_id = os.environ.get("INSTAGRAM_BUSINESS_ACCOUNT_ID", "").strip()
+    graph_version = os.environ.get("INSTAGRAM_GRAPH_API_VERSION", "v23.0").strip() or "v23.0"
+    normalized_handle = _normalize_social_handle(handle)
+
+    if not access_token or not ig_user_id:
+        raise RuntimeError("Instagram Graph API nao configurada.")
+
+    if not normalized_handle:
+        return {
+            "handle": "",
+            "username": "",
+            "name": "",
+            "biography": "",
+            "website": "",
+            "profile_picture_url": "",
+            "followers_count": 0,
+            "media_count": 0,
+            "mentions": 0,
+            "momentum": 0.0,
+            "sentiment": 0.0,
+            "reach": 0.0,
+            "authority": 0.0,
+        }
+
+    fields = (
+        f"business_discovery.username({normalized_handle})"
+        "{username,name,biography,website,profile_picture_url,followers_count,media_count}"
+    )
+    endpoint = (
+        f"https://graph.facebook.com/{graph_version}/{ig_user_id}"
+        f"?fields={quote(fields, safe='{}(),_')}&access_token={quote(access_token, safe='')}"
+    )
+    request = Request(endpoint, method="GET")
+    with urlopen(request, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    discovery = (payload or {}).get("business_discovery") or {}
+    followers_count = _safe_int(discovery.get("followers_count"))
+    media_count = _safe_int(discovery.get("media_count"))
+    reach = clamp(normalize_range(followers_count, 0, 500000) * 0.75 + normalize_range(media_count, 0, 1000) * 0.25)
+    authority = clamp(normalize_range(followers_count, 0, 500000) * 0.7 + normalize_range(media_count, 0, 1000) * 0.3)
+    momentum = clamp(35 + normalize_range(media_count, 0, 1000) * 0.45)
+    sentiment = 60.0
+
+    return {
+        "handle": f"@{normalized_handle}",
+        "username": _safe_text(discovery.get("username")) or normalized_handle,
+        "name": _safe_text(discovery.get("name")),
+        "biography": _safe_text(discovery.get("biography")),
+        "website": _safe_text(discovery.get("website")),
+        "profile_picture_url": _safe_text(discovery.get("profile_picture_url")),
+        "followers_count": followers_count,
+        "media_count": media_count,
+        "mentions": media_count,
+        "momentum": round(momentum, 2),
+        "sentiment": round(sentiment, 2),
+        "reach": round(reach, 2),
+        "authority": round(authority, 2),
+    }
 
 
 def build_google_news_rss_url(query):
@@ -1541,6 +1620,13 @@ def build_hbx_seed_from_profile(player, profile):
         "instagram_sentiment": source_collection.get("instagram", {}).get("sentiment", 0),
         "instagram_reach": source_collection.get("instagram", {}).get("reach", 0),
         "instagram_authority": source_collection.get("instagram", {}).get("authority", 0),
+        "instagram_username": _safe_text(source_collection.get("instagram", {}).get("profile", {}).get("username")),
+        "instagram_name": _safe_text(source_collection.get("instagram", {}).get("profile", {}).get("name")),
+        "instagram_biography": _safe_text(source_collection.get("instagram", {}).get("profile", {}).get("biography")),
+        "instagram_website": _safe_text(source_collection.get("instagram", {}).get("profile", {}).get("website")),
+        "instagram_profile_picture_url": _safe_text(source_collection.get("instagram", {}).get("profile", {}).get("profile_picture_url")),
+        "instagram_followers_count": source_collection.get("instagram", {}).get("profile", {}).get("followers_count", 0),
+        "instagram_media_count": source_collection.get("instagram", {}).get("profile", {}).get("media_count", 0),
         "google_news_mentions": source_collection.get("google_news", {}).get("mentions", 0),
         "google_news_momentum": source_collection.get("google_news", {}).get("momentum", 0),
         "google_news_sentiment": source_collection.get("google_news", {}).get("sentiment", 0),

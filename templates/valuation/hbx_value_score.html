@@ -206,6 +206,7 @@
 
                 <h3 style="margin-top: 24px;">Sinais coletados por fonte</h3>
                 <div class="actions" style="margin: 12px 0 18px;">
+                    <button class="button button-secondary" type="submit" name="action" value="fetch_instagram">Buscar Instagram</button>
                     <button class="button button-secondary" type="submit" name="action" value="fetch_google_news">Buscar Google News RSS</button>
                     <button class="button button-secondary" type="submit" name="action" value="fetch_youtube">Buscar YouTube Data API</button>
                     <button class="button button-secondary" type="submit" name="action" value="fetch_tiktok">Buscar TikTok</button>
@@ -324,6 +325,29 @@
                                 <div class="progress-values">{{ article.title }}</div>
                             </div>
                         {% endfor %}
+                    </div>
+                {% endif %}
+                {% if selected_hbx_profile and selected_hbx_profile.source_collection.instagram.profile.username %}
+                    <div class="progress-stack" style="margin-top: 18px;">
+                        <div class="progress-card">
+                            <div class="progress-label">Instagram oficial</div>
+                            <div class="progress-values">
+                                @{{ selected_hbx_profile.source_collection.instagram.profile.username }}
+                                {% if selected_hbx_profile.source_collection.instagram.profile.name %}| {{ selected_hbx_profile.source_collection.instagram.profile.name }}{% endif %}
+                            </div>
+                        </div>
+                        <div class="progress-card">
+                            <div class="progress-label">Seguidores e conteudo</div>
+                            <div class="progress-values">
+                                {{ selected_hbx_profile.source_collection.instagram.profile.followers_count }} seguidores | {{ selected_hbx_profile.source_collection.instagram.profile.media_count }} posts
+                            </div>
+                        </div>
+                        {% if selected_hbx_profile.source_collection.instagram.profile.biography %}
+                            <div class="progress-card">
+                                <div class="progress-label">Bio</div>
+                                <div class="progress-values">{{ selected_hbx_profile.source_collection.instagram.profile.biography }}</div>
+                            </div>
+                        {% endif %}
                     </div>
                 {% endif %}
                 {% if selected_hbx_profile and selected_hbx_profile.source_collection.youtube.videos %}
