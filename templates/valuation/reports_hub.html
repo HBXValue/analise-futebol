@@ -52,10 +52,18 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="field-group">
+                        <label for="audience">Publico do report</label>
+                        <select id="audience" name="audience" class="field-input">
+                            {% for value, label in audience_options %}
+                                <option value="{{ value }}" {% if selected_audience == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
                 <div class="actions">
                     <button class="button button-primary" type="submit">Atualizar resumo</button>
-                    <a class="button button-secondary" href="{% url 'player-report' selected_player.id %}">HBX Value Report</a>
+                    <a class="button button-secondary" href="{% url 'player-report' selected_player.id %}?audience={{ selected_audience }}&lang={{ lang }}">Exportar PDF do público</a>
                     {% if selected_case %}
                         <a class="button button-secondary" href="{% url 'career-case-report-pdf' selected_case.id %}?lang={{ lang }}">PDF de inteligencia</a>
                     {% endif %}
@@ -119,6 +127,123 @@
                     </div>
                 </article>
             </section>
+
+            {% if audience_packages %}
+            <section class="panel" style="margin-top: 20px;">
+                <h2>Report por publico</h2>
+                <div class="grid stats-grid" style="margin-top: 16px;">
+                    {% for value, label in audience_options %}
+                        <article class="stat-card" style="{% if selected_audience == value %}border: 1px solid rgba(0,224,184,0.35); box-shadow: 0 0 0 1px rgba(0,224,184,0.12) inset;{% endif %}">
+                            <span>{{ label }}</span>
+                            <strong>{{ label }}</strong>
+                            <div>{% if value == 'athlete' %}Desenvolvimento{% elif value == 'agent' %}Valorizacao{% elif value == 'club' %}Fit e risco{% else %}Analise mestre{% endif %}</div>
+                        </article>
+                    {% endfor %}
+                </div>
+
+                {% if selected_audience == 'athlete' %}
+                    {% with package=audience_packages.packages.athlete %}
+                        <div class="progress-stack" style="margin-top: 18px;">
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ package.label }}</div>
+                                    <div class="progress-values"><span>{{ package.headline }}</span></div>
+                                </div>
+                            </article>
+                            {% for item in package.focus %}
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Foco</div>
+                                        <div class="progress-values"><span>{{ item }}</span></div>
+                                    </div>
+                                </article>
+                            {% endfor %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Uso</div>
+                                    <div class="progress-values"><span>{{ package.cta }}</span></div>
+                                </div>
+                            </article>
+                        </div>
+                    {% endwith %}
+                {% elif selected_audience == 'agent' %}
+                    {% with package=audience_packages.packages.agent %}
+                        <div class="progress-stack" style="margin-top: 18px;">
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ package.label }}</div>
+                                    <div class="progress-values"><span>{{ package.headline }}</span></div>
+                                </div>
+                            </article>
+                            {% for item in package.focus %}
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Tese</div>
+                                        <div class="progress-values"><span>{{ item }}</span></div>
+                                    </div>
+                                </article>
+                            {% endfor %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Uso</div>
+                                    <div class="progress-values"><span>{{ package.cta }}</span></div>
+                                </div>
+                            </article>
+                        </div>
+                    {% endwith %}
+                {% elif selected_audience == 'club' %}
+                    {% with package=audience_packages.packages.club %}
+                        <div class="progress-stack" style="margin-top: 18px;">
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ package.label }}</div>
+                                    <div class="progress-values"><span>{{ package.headline }}</span></div>
+                                </div>
+                            </article>
+                            {% for item in package.focus %}
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Critico para o clube</div>
+                                        <div class="progress-values"><span>{{ item }}</span></div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Uso</div>
+                                    <div class="progress-values"><span>{{ package.cta }}</span></div>
+                                </div>
+                            </article>
+                        </div>
+                    {% endwith %}
+                {% else %}
+                    {% with package=audience_packages.packages.consultancy %}
+                        <div class="progress-stack" style="margin-top: 18px;">
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">{{ package.label }}</div>
+                                    <div class="progress-values"><span>{{ package.headline }}</span></div>
+                                </div>
+                            </article>
+                            {% for item in package.focus %}
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Leitura interna</div>
+                                        <div class="progress-values"><span>{{ item }}</span></div>
+                                    </div>
+                                </article>
+                            {% endfor %}
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Uso</div>
+                                    <div class="progress-values"><span>{{ package.cta }}</span></div>
+                                </div>
+                            </article>
+                        </div>
+                    {% endwith %}
+                {% endif %}
+            </section>
+            {% endif %}
 
             <section class="panel" style="margin-top: 20px;">
                 <h2>Bloco para relatorio</h2>
@@ -209,7 +334,7 @@
                         <tr>
                             <td><strong>{{ player.name }}</strong></td>
                             <td>{{ player.club_origin }}</td>
-                            <td><a class="button button-primary" href="{% url 'player-report' player.id %}">HBX Value Report</a></td>
+                            <td><a class="button button-primary" href="{% url 'player-report' player.id %}?audience={{ selected_audience }}&lang={{ lang }}">Exportar PDF</a></td>
                         </tr>
                     {% empty %}
                         <tr><td colspan="3">Nenhum atleta cadastrado.</td></tr>

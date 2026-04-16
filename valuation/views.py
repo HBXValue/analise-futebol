@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import date
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.hashers import check_password, make_password
@@ -14,14 +15,19 @@ from clubs.models import Club
 from valuation.auth import SESSION_KEY, get_current_user, login_required
 from valuation.ai_service import generate_ai_dashboard_insight, get_cached_ai_dashboard_insight
 from valuation.constants import get_position_group
-from valuation.forms import AnalystNoteForm, CSVUploadForm, ComparisonForm, DevelopmentPlanForm, LiveAnalysisEventForm, LiveAnalysisSessionForm, LoginForm, OnBallEventForm, PlayerValuationForm, ProgressTrackingForm, SignUpForm, SnapshotSimulationForm, UpliftSimulationForm
+from valuation.forms import AnalystNoteForm, AthleteCareerEntryForm, CSVUploadForm, ComparisonForm, DevelopmentPlanForm, GoCarrieraCheckInForm, LiveAnalysisEventForm, LiveAnalysisSessionForm, LoginForm, OnBallEventForm, PlayerValuationForm, ProgressTrackingForm, SignUpForm, SnapshotSimulationForm, UpliftSimulationForm
 from valuation.i18n import LANGUAGES, get_language, get_translations, tr
 from valuation.models import CareerIntelligenceCase, LiveAnalysisSession, LivePlayerEvaluation, Player, User
 from valuation.ui_context import build_global_player_context
 from valuation.services import (
     build_dashboard_payload,
+    build_comparative_intelligence,
+    build_projection_intelligence,
+    build_opportunity_intelligence,
+    build_report_audience_packages,
     build_hbx_seed_from_profile,
     build_growth_insights,
+    build_behavioral_intelligence,
     calculate_scores,
     clamp,
     compute_hbx_value_profile,
@@ -47,6 +53,10 @@ from valuation.services import (
     player_timeline_events,
     get_hbx_value_profile,
     save_analyst_note,
+    save_athlete_career_entry,
+    save_athlete_contract,
+    save_athlete_transfer,
+    save_go_carriera_checkin,
     save_development_plan,
     save_hbx_value_profile,
     save_live_analysis_event,
@@ -954,6 +964,7 @@ def reports_view(request):
     lang = get_language(request)
     current_user = get_current_user(request)
     compare_window = request.GET.get("compare_window", "90")
+    audience = request.GET.get("audience", "consultancy")
     selected_player_id = request.GET.get("player") or request.GET.get("athlete")
     players = list(
         Player.objects.filter(user=current_user)
@@ -971,8 +982,14 @@ def reports_view(request):
             selected_player = None
     if selected_player is None and players:
         selected_player = players[0]
+    if audience not in {"athlete", "agent", "club", "consultancy"}:
+        audience = "consultancy"
     selected_case = (
         CareerIntelligenceCase.objects.filter(player=selected_player).order_by("-updated_at", "-id").first()
+        if selected_player else None
+    )
+    audience_packages = (
+        build_report_audience_packages(selected_player, lang, int(compare_window))
         if selected_player else None
     )
     context = {
@@ -981,6 +998,14 @@ def reports_view(request):
         "cases": cases,
         "selected_player": selected_player,
         "selected_case": selected_case,
+        "selected_audience": audience,
+        "audience_packages": audience_packages,
+        "audience_options": [
+            ("athlete", "Atleta"),
+            ("agent", "Agente"),
+            ("club", "Clube"),
+            ("consultancy", "Consultoria"),
+        ],
         "ai_dashboard_insight": get_cached_ai_dashboard_insight(selected_player, lang, int(compare_window), scope="reports") if selected_player else None,
         "compare_window": compare_window,
         "compare_windows": ["30", "60", "90", "180"],
@@ -1232,6 +1257,12 @@ def player_edit_view(request, player_id):
         user=current_user,
     )
     form = PlayerValuationForm(request.POST or None, player=player, lang=lang)
+    career_form = AthleteCareerEntryForm(lang=lang)
+    go_carriera_form = GoCarrieraCheckInForm(lang=lang)
+    career_entries = list(player.career_entries.all())
+    contracts = list(player.contracts.all())
+    transfers = list(player.transfers.all())
+    go_carriera_checkins = list(player.go_carriera_checkins.all()[:10])
     recent_players = list(
         Player.objects.filter(user=current_user)
         .select_related("division_reference__country", "club_reference")
@@ -1249,6 +1280,32 @@ def player_edit_view(request, player_id):
         "current_user": current_user,
         "page_title": f"{tr(lang, 'edit')} {player.name}",
         "player": player,
+        "career_form": career_form,
+        "go_carriera_form": go_carriera_form,
+        "career_entries": career_entries,
+        "contracts": contracts,
+        "transfers": transfers,
+        "go_carriera_checkins": go_carriera_checkins,
+        "behavioral_intelligence": build_behavioral_intelligence(player),
+        "comparative_intelligence": build_comparative_intelligence(player, lang=lang, compare_window_days=90),
+        "projection_intelligence": build_projection_intelligence(player, lang=lang, period="12"),
+        "opportunity_intelligence": build_opportunity_intelligence(player, lang=lang, period="12"),
+        "latest_score_snapshot": player.score_snapshots.first(),
+        "latest_projection_snapshot": player.projection_snapshots.first(),
+        "latest_behavior_snapshot": player.behavior_snapshots.first(),
+        "latest_market_snapshot": player.market_snapshots.first(),
+        "latest_marketing_snapshot": player.marketing_snapshots.first(),
+        "latest_performance_snapshot": player.performance_snapshots.first(),
+        "latest_athlete_snapshot": player.athlete_snapshots.first(),
+        "snapshot_counts": {
+            "athlete": player.athlete_snapshots.count(),
+            "performance": player.performance_snapshots.count(),
+            "behavior": player.behavior_snapshots.count(),
+            "market": player.market_snapshots.count(),
+            "marketing": player.marketing_snapshots.count(),
+            "score": player.score_snapshots.count(),
+            "projection": player.projection_snapshots.count(),
+        },
         "recent_players": recent_players,
         "countries": countries,
         "division_suggestions": divisions,
@@ -1258,6 +1315,96 @@ def player_edit_view(request, player_id):
         "languages": LANGUAGES,
     }
     return render(request, "valuation/player_form.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def player_career_entry_view(request, player_id):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    player = get_object_or_404(Player, pk=player_id, user=current_user)
+    form = AthleteCareerEntryForm(request.POST, lang=lang)
+    if form.is_valid():
+        save_athlete_career_entry(player, form.cleaned_data)
+        messages.success(request, "Historico de carreira atualizado.")
+    else:
+        for field_errors in form.errors.values():
+            for error in field_errors:
+                messages.error(request, error)
+    return redirect(f"{reverse('player-edit', args=[player.id])}?lang={lang}")
+
+
+@login_required
+@require_http_methods(["POST"])
+def player_contract_view(request, player_id):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    player = get_object_or_404(Player, pk=player_id, user=current_user)
+    try:
+        cleaned_data = {
+            "club_name": request.POST.get("club_name", "").strip(),
+            "start_date": date.fromisoformat(request.POST["start_date"]) if request.POST.get("start_date") else None,
+            "end_date": date.fromisoformat(request.POST["end_date"]) if request.POST.get("end_date") else None,
+            "monthly_salary": Decimal(request.POST.get("monthly_salary") or "0"),
+            "release_clause": Decimal(request.POST.get("release_clause") or "0"),
+            "status": request.POST.get("status", "").strip() or "active",
+            "is_current": bool(request.POST.get("is_current")),
+            "notes": request.POST.get("notes", "").strip(),
+            "contract_months_remaining": int(request.POST["contract_months_remaining"]) if request.POST.get("contract_months_remaining") else None,
+        }
+        if not cleaned_data["club_name"]:
+            raise ValueError("Clube do contrato e obrigatorio.")
+        if cleaned_data["start_date"] and cleaned_data["end_date"] and cleaned_data["end_date"] < cleaned_data["start_date"]:
+            raise ValueError("A data final do contrato nao pode ser anterior a inicial.")
+        save_athlete_contract(player, cleaned_data)
+        messages.success(request, "Contrato atualizado.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect(f"{reverse('player-edit', args=[player.id])}?lang={lang}")
+
+
+@login_required
+@require_http_methods(["POST"])
+def player_transfer_view(request, player_id):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    player = get_object_or_404(Player, pk=player_id, user=current_user)
+    try:
+        cleaned_data = {
+            "from_club": request.POST.get("from_club", "").strip(),
+            "to_club": request.POST.get("to_club", "").strip(),
+            "transfer_date": date.fromisoformat(request.POST["transfer_date"]) if request.POST.get("transfer_date") else None,
+            "transfer_type": request.POST.get("transfer_type", "").strip() or "permanent",
+            "transfer_fee": Decimal(request.POST.get("transfer_fee") or "0"),
+            "currency": request.POST.get("currency", "").strip() or "EUR",
+            "notes": request.POST.get("notes", "").strip(),
+        }
+        if not cleaned_data["to_club"]:
+            raise ValueError("Clube de destino e obrigatorio.")
+        if cleaned_data["transfer_date"] is None:
+            raise ValueError("Data da transferencia e obrigatoria.")
+        save_athlete_transfer(player, cleaned_data)
+        messages.success(request, "Transferencia registrada.")
+    except Exception as exc:
+        messages.error(request, str(exc))
+    return redirect(f"{reverse('player-edit', args=[player.id])}?lang={lang}")
+
+
+@login_required
+@require_http_methods(["POST"])
+def player_go_carriera_checkin_view(request, player_id):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    player = get_object_or_404(Player, pk=player_id, user=current_user)
+    form = GoCarrieraCheckInForm(request.POST, lang=lang)
+    if form.is_valid():
+        save_go_carriera_checkin(player, form.cleaned_data)
+        messages.success(request, "Check-in Go Carriera registrado.")
+    else:
+        for field_errors in form.errors.values():
+            for error in field_errors:
+                messages.error(request, error)
+    return redirect(f"{reverse('player-edit', args=[player.id])}?lang={lang}")
 
 
 @login_required
@@ -1290,6 +1437,9 @@ def csv_template_view(request):
 def export_report_view(request, player_id):
     lang = get_language(request)
     current_user = get_current_user(request)
+    audience = request.GET.get("audience", "consultancy")
+    if audience not in {"athlete", "agent", "club", "consultancy"}:
+        audience = "consultancy"
     player = get_object_or_404(
         Player.objects.select_related(
             "performance_metrics",
@@ -1300,7 +1450,7 @@ def export_report_view(request, player_id):
         pk=player_id,
         user=current_user,
     )
-    response = HttpResponse(generate_pdf_report(player, lang), content_type="application/pdf")
+    response = HttpResponse(generate_pdf_report(player, lang, audience=audience), content_type="application/pdf")
     slug = player.name.lower().replace(" ", "_")
-    response["Content-Disposition"] = f'attachment; filename="{slug}_valuation_report.pdf"'
+    response["Content-Disposition"] = f'attachment; filename="{slug}_{audience}_report.pdf"'
     return response

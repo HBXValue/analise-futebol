@@ -586,6 +586,116 @@ class ProjectionSnapshot(models.Model):
         unique_together = ("player", "snapshot_date", "source")
 
 
+class AthleteCareerEntry(models.Model):
+    class MoveType(models.TextChoices):
+        PERMANENT = "permanent", "Contrato definitivo"
+        LOAN = "loan", "Emprestimo"
+        ACADEMY = "academy", "Base"
+        PROMOTION = "promotion", "Promocao interna"
+        TRIAL = "trial", "Periodo de avaliacao"
+        OTHER = "other", "Outro"
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="career_entries")
+    club_name = models.CharField(max_length=160)
+    country_name = models.CharField(max_length=120, blank=True)
+    division_name = models.CharField(max_length=120, blank=True)
+    season_label = models.CharField(max_length=60, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    move_type = models.CharField(max_length=20, choices=MoveType.choices, default=MoveType.PERMANENT)
+    is_current = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "athlete_career_entries"
+        ordering = ["-is_current", "-start_date", "-id"]
+
+    def __str__(self):
+        return f"{self.player.name} | {self.club_name}"
+
+
+class AthleteContract(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Ativo"
+        RENEWAL = "renewal", "Em renovacao"
+        EXPIRING = "expiring", "Proximo do fim"
+        LOAN = "loan", "Emprestimo"
+        FREE = "free", "Livre"
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="contracts")
+    club_name = models.CharField(max_length=160)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    monthly_salary = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    release_clause = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    is_current = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "athlete_contracts"
+        ordering = ["-is_current", "-start_date", "-id"]
+
+
+class AthleteTransfer(models.Model):
+    class TransferType(models.TextChoices):
+        PERMANENT = "permanent", "Definitiva"
+        LOAN = "loan", "Emprestimo"
+        RETURN_LOAN = "return_loan", "Retorno de emprestimo"
+        FREE = "free", "Livre"
+        INTERNAL = "internal", "Promocao interna"
+        OTHER = "other", "Outra"
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="transfers")
+    from_club = models.CharField(max_length=160, blank=True)
+    to_club = models.CharField(max_length=160)
+    transfer_date = models.DateField()
+    transfer_type = models.CharField(max_length=20, choices=TransferType.choices, default=TransferType.PERMANENT)
+    transfer_fee = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    currency = models.CharField(max_length=10, default="EUR")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "athlete_transfers"
+        ordering = ["-transfer_date", "-id"]
+
+
+class GoCarrieraCheckIn(models.Model):
+    class InjuryStatus(models.TextChoices):
+        NONE = "none", "Sem lesao"
+        MANAGED = "managed", "Controle de carga"
+        RECOVERY = "recovery", "Em recuperacao"
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="go_carriera_checkins")
+    checkin_date = models.DateField()
+    sleep_quality = models.PositiveSmallIntegerField(default=0)
+    hydration = models.PositiveSmallIntegerField(default=0)
+    nutrition = models.PositiveSmallIntegerField(default=0)
+    energy = models.PositiveSmallIntegerField(default=0)
+    focus = models.PositiveSmallIntegerField(default=0)
+    mood = models.PositiveSmallIntegerField(default=0)
+    motivation = models.PositiveSmallIntegerField(default=0)
+    post_error_response = models.PositiveSmallIntegerField(default=0)
+    soreness = models.PositiveSmallIntegerField(default=0)
+    recovery = models.PositiveSmallIntegerField(default=0)
+    treatment_adherence = models.PositiveSmallIntegerField(default=0)
+    injury_status = models.CharField(max_length=20, choices=InjuryStatus.choices, default=InjuryStatus.NONE)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "go_carriera_checkins"
+        ordering = ["-checkin_date", "-id"]
+        unique_together = ("player", "checkin_date")
+
+
 class CareerIntelligenceCase(models.Model):
     class Category(models.TextChoices):
         PROFESSIONAL = "professional", "Profissional"

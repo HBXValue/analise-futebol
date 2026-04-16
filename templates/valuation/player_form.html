@@ -70,6 +70,20 @@
                     </div>
                 </div>
             {% endif %}
+            {% if player %}
+                <form id="career-entry-form" method="post" action="{% url 'player-career-entry' player.id %}?lang={{ lang }}">
+                    {% csrf_token %}
+                </form>
+                <form id="contract-form" method="post" action="{% url 'player-contract' player.id %}?lang={{ lang }}">
+                    {% csrf_token %}
+                </form>
+                <form id="transfer-form" method="post" action="{% url 'player-transfer' player.id %}?lang={{ lang }}">
+                    {% csrf_token %}
+                </form>
+                <form id="go-carriera-form" method="post" action="{% url 'player-go-carriera-checkin' player.id %}?lang={{ lang }}">
+                    {% csrf_token %}
+                </form>
+            {% endif %}
             <form method="post">
                 {% csrf_token %}
                 <datalist id="division-suggestions">
@@ -82,7 +96,68 @@
                         <option value="{{ club.short_name|default:club.official_name }}">{{ club.country.name }} | {{ club.division.short_name|default:club.division.name }} | {{ club.official_name }}</option>
                     {% endfor %}
                 </datalist>
+                {% if player %}
+                    <div class="panel" style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, rgba(0, 224, 184, 0.08), rgba(255, 255, 255, 0.03)); border: 1px solid rgba(0, 224, 184, 0.16);">
+                        <div style="display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; flex-wrap: wrap;">
+                            <div>
+                                <div class="pill">Athlete 360</div>
+                                <h2 style="margin: 10px 0 8px;">{{ player.name }}</h2>
+                                <div style="color: var(--muted);">
+                                    {{ player.position }} | {% if player.division_reference_id %}{{ player.division_reference.country.name }} | {{ player.division_reference.short_name|default:player.league_level }} | {% endif %}{{ player.club_reference.short_name|default:player.club_origin }}
+                                </div>
+                            </div>
+                            <div class="live-statline" style="margin-top: 0;">
+                                <div class="stat-card">
+                                    <span>HBX Score</span>
+                                    <strong>{% if latest_score_snapshot %}{{ latest_score_snapshot.final_score|floatformat:1 }}{% else %}-{% endif %}</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Valor projetado</span>
+                                    <strong>{% if latest_projection_snapshot %}EUR {{ latest_projection_snapshot.projected_value }}{% else %}-{% endif %}</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Snapshots</span>
+                                    <strong>{% if snapshot_counts %}{{ snapshot_counts.score }}{% else %}0{% endif %}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-grid" style="margin-top: 18px;">
+                            <div class="field-group">
+                                <label>Performance</label>
+                                <div class="field-input" style="display: flex; align-items: center;">{% if latest_performance_snapshot %}{{ latest_performance_snapshot.performance_score|floatformat:1 }}/100{% else %}Sem leitura ainda{% endif %}</div>
+                            </div>
+                            <div class="field-group">
+                                <label>Behavior</label>
+                                <div class="field-input" style="display: flex; align-items: center;">{% if latest_behavior_snapshot %}{{ latest_behavior_snapshot.behavior_score|floatformat:1 }}/100{% else %}Sem leitura ainda{% endif %}</div>
+                            </div>
+                            <div class="field-group">
+                                <label>Market</label>
+                                <div class="field-input" style="display: flex; align-items: center;">{% if latest_market_snapshot %}{{ latest_market_snapshot.market_score|floatformat:1 }}/100{% else %}Sem leitura ainda{% endif %}</div>
+                            </div>
+                            <div class="field-group">
+                                <label>Marketing</label>
+                                <div class="field-input" style="display: flex; align-items: center;">{% if latest_marketing_snapshot %}{{ latest_marketing_snapshot.marketing_score|floatformat:1 }}/100{% else %}Sem leitura ainda{% endif %}</div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
 
+                <div class="panel" style="margin-bottom: 24px; padding: 16px 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" class="button button-secondary athlete-tab-button active" data-athlete-tab-target="profile">Perfil</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="career">Carreira</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="performance">Performance</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="market">Market</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="marketing">Marketing</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="behavior">Behavior</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="comparative">Comparative</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="projection">Projection</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="opportunity">Opportunity</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="timeline">Timeline</button>
+                    </div>
+                </div>
+
+                <section data-athlete-tab="profile">
                 <h2 class="section-title">{{ t.player_profile }}</h2>
                 <div class="panel" style="margin-bottom: 24px; padding: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
                     <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Clube atual do atleta</h3>
@@ -186,8 +261,234 @@
                     </div>
                     <div class="field-group" style="grid-column: 1 / -1;"><label for="{{ form.profile_notes.id_for_label }}">{{ form.profile_notes.label }}</label>{{ form.profile_notes }}{% if form.profile_notes.errors %}<small style="color: #ffd1d1;">{{ form.profile_notes.errors|join:", " }}</small>{% endif %}</div>
                 </div>
+                </section>
 
+                <section data-athlete-tab="career" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 30px;">Carreira</h2>
+                    <p style="color: var(--muted); margin-top: 0;">Historico de clubes, temporadas e movimentos do atleta. Esta aba comeca simples e sera a base para contratos, transferencias e leitura de trajetoria.</p>
+                    {% if player %}
+                        <div class="panel" style="margin-bottom: 20px; padding: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Adicionar passagem</h3>
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label for="career-club-name">Clube</label>
+                                    <input id="career-club-name" class="field-input" form="career-entry-form" type="text" name="club_name" placeholder="Ex.: Palmeiras">
+                                </div>
+                                <div class="field-group">
+                                    <label for="career-country-name">Pais</label>
+                                    <input id="career-country-name" class="field-input" form="career-entry-form" type="text" name="country_name" placeholder="Ex.: Brasil">
+                                </div>
+                                <div class="field-group">
+                                    <label for="career-division-name">Liga / divisao</label>
+                                    <input id="career-division-name" class="field-input" form="career-entry-form" type="text" name="division_name" placeholder="Ex.: Serie A">
+                                </div>
+                                <div class="field-group">
+                                    <label for="career-season-label">Temporada</label>
+                                    <input id="career-season-label" class="field-input" form="career-entry-form" type="text" name="season_label" placeholder="Ex.: 2026">
+                                </div>
+                                <div class="field-group">
+                                    <label for="career-start-date">Inicio</label>
+                                    <input id="career-start-date" class="field-input" form="career-entry-form" type="date" name="start_date">
+                                </div>
+                                <div class="field-group">
+                                    <label for="career-end-date">Fim</label>
+                                    <input id="career-end-date" class="field-input" form="career-entry-form" type="date" name="end_date">
+                                </div>
+                                <div class="field-group">
+                                    <label for="career-move-type">Tipo de movimento</label>
+                                    <select id="career-move-type" class="field-input" form="career-entry-form" name="move_type">
+                                        <option value="">---------</option>
+                                        <option value="permanent">Contrato definitivo</option>
+                                        <option value="loan">Emprestimo</option>
+                                        <option value="academy">Base</option>
+                                        <option value="promotion">Promocao interna</option>
+                                        <option value="trial">Periodo de avaliacao</option>
+                                        <option value="other">Outro</option>
+                                    </select>
+                                </div>
+                                <div class="field-group" style="align-content: end;">
+                                    <label for="career-is-current">Clube atual</label>
+                                    <div class="field-input" style="display:flex; align-items:center; gap:10px;">
+                                        <input id="career-is-current" form="career-entry-form" type="checkbox" name="is_current">
+                                        <span>Marcar como clube atual</span>
+                                    </div>
+                                </div>
+                                <div class="field-group" style="grid-column: 1 / -1;">
+                                    <label for="career-notes">Notas</label>
+                                    <textarea id="career-notes" class="field-input" form="career-entry-form" name="notes" rows="3" placeholder="Ex.: estreia no profissional, emprestimo, retorno, troca de categoria."></textarea>
+                                </div>
+                            </div>
+                            <div class="actions">
+                                <button class="button button-primary" type="submit" form="career-entry-form">Adicionar passagem</button>
+                            </div>
+                        </div>
+                        <div class="progress-stack">
+                            {% for entry in career_entries %}
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">{{ entry.club_name }}{% if entry.is_current %} <span class="badge">Atual</span>{% endif %}</div>
+                                        <div class="progress-values">
+                                            {% if entry.country_name %}<span>{{ entry.country_name }}</span>{% endif %}
+                                            {% if entry.division_name %}<span>{{ entry.division_name }}</span>{% endif %}
+                                            {% if entry.season_label %}<span>{{ entry.season_label }}</span>{% endif %}
+                                            <span>{{ entry.get_move_type_display }}</span>
+                                        </div>
+                                    </div>
+                                    <div style="color: var(--muted);">
+                                        {% if entry.start_date %}{{ entry.start_date|date:"d/m/Y" }}{% else %}-{% endif %} ate {% if entry.end_date %}{{ entry.end_date|date:"d/m/Y" }}{% elif entry.is_current %}hoje{% else %}-{% endif %}
+                                    </div>
+                                    {% if entry.notes %}
+                                        <div style="color: var(--muted); margin-top: 8px;">{{ entry.notes }}</div>
+                                    {% endif %}
+                                </article>
+                            {% empty %}
+                                <div class="panel" style="padding: 18px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);">
+                                    Nenhuma passagem registrada ainda. Comece pelo clube atual e depois complemente a trajetoria do atleta.
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="panel" style="margin-top: 22px; padding: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Contrato</h3>
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label for="contract-club-name">Clube do contrato</label>
+                                    <input id="contract-club-name" class="field-input" form="contract-form" type="text" name="club_name" placeholder="Ex.: Palmeiras">
+                                </div>
+                                <div class="field-group">
+                                    <label for="contract-start-date">Inicio</label>
+                                    <input id="contract-start-date" class="field-input" form="contract-form" type="date" name="start_date">
+                                </div>
+                                <div class="field-group">
+                                    <label for="contract-end-date">Fim</label>
+                                    <input id="contract-end-date" class="field-input" form="contract-form" type="date" name="end_date">
+                                </div>
+                                <div class="field-group">
+                                    <label for="contract-status">Status</label>
+                                    <select id="contract-status" class="field-input" form="contract-form" name="status">
+                                        <option value="active">Ativo</option>
+                                        <option value="renewal">Em renovacao</option>
+                                        <option value="expiring">Proximo do fim</option>
+                                        <option value="loan">Emprestimo</option>
+                                        <option value="free">Livre</option>
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label for="contract-months-remaining">Meses restantes</label>
+                                    <input id="contract-months-remaining" class="field-input" form="contract-form" type="number" min="0" name="contract_months_remaining" placeholder="Ex.: 18">
+                                </div>
+                                <div class="field-group">
+                                    <label for="contract-monthly-salary">Salario mensal</label>
+                                    <input id="contract-monthly-salary" class="field-input" form="contract-form" type="number" min="0" step="0.01" name="monthly_salary" placeholder="Ex.: 25000">
+                                </div>
+                                <div class="field-group">
+                                    <label for="contract-release-clause">Clausula de saida</label>
+                                    <input id="contract-release-clause" class="field-input" form="contract-form" type="number" min="0" step="0.01" name="release_clause" placeholder="Ex.: 5000000">
+                                </div>
+                                <div class="field-group" style="align-content: end;">
+                                    <label for="contract-is-current">Contrato atual</label>
+                                    <div class="field-input" style="display:flex; align-items:center; gap:10px;">
+                                        <input id="contract-is-current" form="contract-form" type="checkbox" name="is_current" checked>
+                                        <span>Marcar como contrato vigente</span>
+                                    </div>
+                                </div>
+                                <div class="field-group" style="grid-column: 1 / -1;">
+                                    <label for="contract-notes">Notas do contrato</label>
+                                    <textarea id="contract-notes" class="field-input" form="contract-form" name="notes" rows="3" placeholder="Ex.: renovacao em andamento, gatilhos por performance, interesse de mercado."></textarea>
+                                </div>
+                            </div>
+                            <div class="actions">
+                                <button class="button button-primary" type="submit" form="contract-form">Salvar contrato</button>
+                            </div>
+                            <div class="progress-stack" style="margin-top: 18px;">
+                                {% for contract in contracts %}
+                                    <article class="progress-card">
+                                        <div class="progress-meta">
+                                            <div class="progress-label">{{ contract.club_name }}{% if contract.is_current %} <span class="badge">Vigente</span>{% endif %}</div>
+                                            <div class="progress-values">
+                                                <span>{{ contract.get_status_display }}</span>
+                                                {% if contract.end_date %}<span>Fim {{ contract.end_date|date:"d/m/Y" }}</span>{% endif %}
+                                            </div>
+                                        </div>
+                                        <div style="color: var(--muted);">
+                                            Salario {{ contract.monthly_salary }} | Clausula {{ contract.release_clause }}
+                                        </div>
+                                    </article>
+                                {% empty %}
+                                    <div style="color: var(--muted);">Nenhum contrato registrado ainda.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="panel" style="margin-top: 22px; padding: 20px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Transferencias</h3>
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label for="transfer-from-club">Clube de origem</label>
+                                    <input id="transfer-from-club" class="field-input" form="transfer-form" type="text" name="from_club" placeholder="Ex.: Sport">
+                                </div>
+                                <div class="field-group">
+                                    <label for="transfer-to-club">Clube de destino</label>
+                                    <input id="transfer-to-club" class="field-input" form="transfer-form" type="text" name="to_club" placeholder="Ex.: Palmeiras">
+                                </div>
+                                <div class="field-group">
+                                    <label for="transfer-date">Data</label>
+                                    <input id="transfer-date" class="field-input" form="transfer-form" type="date" name="transfer_date">
+                                </div>
+                                <div class="field-group">
+                                    <label for="transfer-type">Tipo</label>
+                                    <select id="transfer-type" class="field-input" form="transfer-form" name="transfer_type">
+                                        <option value="permanent">Definitiva</option>
+                                        <option value="loan">Emprestimo</option>
+                                        <option value="return_loan">Retorno de emprestimo</option>
+                                        <option value="free">Livre</option>
+                                        <option value="internal">Promocao interna</option>
+                                        <option value="other">Outra</option>
+                                    </select>
+                                </div>
+                                <div class="field-group">
+                                    <label for="transfer-fee">Valor</label>
+                                    <input id="transfer-fee" class="field-input" form="transfer-form" type="number" min="0" step="0.01" name="transfer_fee" placeholder="Ex.: 1500000">
+                                </div>
+                                <div class="field-group">
+                                    <label for="transfer-currency">Moeda</label>
+                                    <input id="transfer-currency" class="field-input" form="transfer-form" type="text" name="currency" value="EUR">
+                                </div>
+                                <div class="field-group" style="grid-column: 1 / -1;">
+                                    <label for="transfer-notes">Notas da transferencia</label>
+                                    <textarea id="transfer-notes" class="field-input" form="transfer-form" name="notes" rows="3" placeholder="Ex.: compra definitiva apos emprestimo, promocao da base, transferencia sem custo."></textarea>
+                                </div>
+                            </div>
+                            <div class="actions">
+                                <button class="button button-primary" type="submit" form="transfer-form">Registrar transferencia</button>
+                            </div>
+                            <div class="progress-stack" style="margin-top: 18px;">
+                                {% for transfer in transfers %}
+                                    <article class="progress-card">
+                                        <div class="progress-meta">
+                                            <div class="progress-label">{{ transfer.from_club|default:"Origem nao informada" }} -> {{ transfer.to_club }}</div>
+                                            <div class="progress-values">
+                                                <span>{{ transfer.transfer_date|date:"d/m/Y" }}</span>
+                                                <span>{{ transfer.get_transfer_type_display }}</span>
+                                            </div>
+                                        </div>
+                                        <div style="color: var(--muted);">
+                                            {{ transfer.currency }} {{ transfer.transfer_fee }}
+                                        </div>
+                                    </article>
+                                {% empty %}
+                                    <div style="color: var(--muted);">Nenhuma transferencia registrada ainda.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="panel" style="padding: 18px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);">
+                            Salve o atleta primeiro para liberar o historico de carreira.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <section data-athlete-tab="performance" style="display: none;">
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.performance_metrics }}</h2>
+                <p style="color: var(--muted); margin-top: 0;">Base esportiva do atleta com métricas por 90, adequação posicional e histórico que alimenta o Performance Intelligence.</p>
                 <div class="form-grid">
                     <div class="field-group"><label for="{{ form.xg.id_for_label }}">{{ form.xg.label }}</label>{{ form.xg }}{% if form.xg.errors %}<small style="color: #ffd1d1;">{{ form.xg.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group"><label for="{{ form.xa.id_for_label }}">{{ form.xa.label }}</label>{{ form.xa }}{% if form.xa.errors %}<small style="color: #ffd1d1;">{{ form.xa.errors|join:", " }}</small>{% endif %}</div>
@@ -197,8 +498,23 @@
                     <div class="field-group"><label for="{{ form.high_intensity_distance.id_for_label }}">{{ form.high_intensity_distance.label }}</label>{{ form.high_intensity_distance }}{% if form.high_intensity_distance.errors %}<small style="color: #ffd1d1;">{{ form.high_intensity_distance.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group"><label for="{{ form.final_third_recoveries.id_for_label }}">{{ form.final_third_recoveries.label }}</label>{{ form.final_third_recoveries }}{% if form.final_third_recoveries.errors %}<small style="color: #ffd1d1;">{{ form.final_third_recoveries.errors|join:", " }}</small>{% endif %}</div>
                 </div>
+                {% if player %}
+                    <div class="panel" style="margin-top: 20px; padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <strong style="display:block; margin-bottom: 8px;">Leitura atual de performance</strong>
+                        <div style="color: var(--muted);">
+                            {% if latest_performance_snapshot %}
+                                Score {{ latest_performance_snapshot.performance_score|floatformat:1 }}/100 | contexto {{ latest_performance_snapshot.context_score|floatformat:1 }} | consistencia {{ latest_performance_snapshot.consistency_score|floatformat:1 }}
+                            {% else %}
+                                O atleta ainda nao possui snapshot de performance consolidado.
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                </section>
 
+                <section data-athlete-tab="market" style="display: none;">
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.market_metrics }}</h2>
+                <p style="color: var(--muted); margin-top: 0;">Leitura de valor, contexto competitivo, reputação do ambiente e potencial de movimento de carreira.</p>
                 <div class="form-grid">
                     <div class="field-group"><label for="{{ form.annual_growth.id_for_label }}">{{ form.annual_growth.label }}</label>{{ form.annual_growth }}{% if form.annual_growth.errors %}<small style="color: #ffd1d1;">{{ form.annual_growth.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group"><label for="{{ form.club_interest.id_for_label }}">{{ form.club_interest.label }}</label>{{ form.club_interest }}{% if form.club_interest.errors %}<small style="color: #ffd1d1;">{{ form.club_interest.errors|join:", " }}</small>{% endif %}</div>
@@ -206,7 +522,21 @@
                     <div class="field-group"><label for="{{ form.age_factor.id_for_label }}">{{ form.age_factor.label }}</label>{{ form.age_factor }}{% if form.age_factor.errors %}<small style="color: #ffd1d1;">{{ form.age_factor.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group"><label for="{{ form.club_reputation.id_for_label }}">{{ form.club_reputation.label }}</label>{{ form.club_reputation }}{% if form.club_reputation.errors %}<small style="color: #ffd1d1;">{{ form.club_reputation.errors|join:", " }}</small>{% endif %}</div>
                 </div>
+                {% if player %}
+                    <div class="panel" style="margin-top: 20px; padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <strong style="display:block; margin-bottom: 8px;">Leitura atual de mercado</strong>
+                        <div style="color: var(--muted);">
+                            {% if latest_market_snapshot %}
+                                Score {{ latest_market_snapshot.market_score|floatformat:1 }}/100 | valor atual EUR {{ latest_market_snapshot.current_value }} | valor projetado EUR {{ latest_market_snapshot.projected_value }}
+                            {% else %}
+                                O atleta ainda nao possui snapshot de mercado consolidado.
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                </section>
 
+                <section data-athlete-tab="marketing" style="display: none;">
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.marketing_metrics }}</h2>
                 <p style="color: var(--muted); margin-top: 0;">
                     Cadastre os identificadores publicos do atleta e os sinais coletados por rede. Essa base fortalece o perfil do novo jogador e deixa os dados prontos para uso posterior nas demais analises do sistema.
@@ -257,8 +587,23 @@
                     <div class="field-group"><label for="{{ form.sentiment_score.id_for_label }}">{{ form.sentiment_score.label }}</label>{{ form.sentiment_score }}{% if form.sentiment_score.errors %}<small style="color: #ffd1d1;">{{ form.sentiment_score.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group" style="grid-column: 1 / -1;"><label for="{{ form.collection_notes.id_for_label }}">{{ form.collection_notes.label }}</label>{{ form.collection_notes }}{% if form.collection_notes.errors %}<small style="color: #ffd1d1;">{{ form.collection_notes.errors|join:", " }}</small>{% endif %}</div>
                 </div>
+                {% if player %}
+                    <div class="panel" style="margin-top: 20px; padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <strong style="display:block; margin-bottom: 8px;">Leitura atual de marketing</strong>
+                        <div style="color: var(--muted);">
+                            {% if latest_marketing_snapshot %}
+                                Score {{ latest_marketing_snapshot.marketing_score|floatformat:1 }}/100 | atencao de midia {{ latest_marketing_snapshot.media_attention_score|floatformat:1 }} | autoridade {{ latest_marketing_snapshot.authority_score|floatformat:1 }}
+                            {% else %}
+                                O atleta ainda nao possui snapshot de marketing consolidado.
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                </section>
 
+                <section data-athlete-tab="behavior" style="display: none;">
                 <h2 class="section-title" style="margin-top: 30px;">{{ t.behavior_metrics }}</h2>
+                <p style="color: var(--muted); margin-top: 0;">Camada comportamental inicial do atleta. Esta area servirá de base para o Behavioral Intelligence e futura integração com Go Carriera.</p>
                 <div class="form-grid">
                     <div class="field-group"><label for="{{ form.conscientiousness.id_for_label }}">{{ form.conscientiousness.label }}</label>{{ form.conscientiousness }}{% if form.conscientiousness.errors %}<small style="color: #ffd1d1;">{{ form.conscientiousness.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group"><label for="{{ form.adaptability.id_for_label }}">{{ form.adaptability.label }}</label>{{ form.adaptability }}{% if form.adaptability.errors %}<small style="color: #ffd1d1;">{{ form.adaptability.errors|join:", " }}</small>{% endif %}</div>
@@ -267,6 +612,487 @@
                     <div class="field-group"><label for="{{ form.executive_function.id_for_label }}">{{ form.executive_function.label }}</label>{{ form.executive_function }}{% if form.executive_function.errors %}<small style="color: #ffd1d1;">{{ form.executive_function.errors|join:", " }}</small>{% endif %}</div>
                     <div class="field-group"><label for="{{ form.leadership.id_for_label }}">{{ form.leadership.label }}</label>{{ form.leadership }}{% if form.leadership.errors %}<small style="color: #ffd1d1;">{{ form.leadership.errors|join:", " }}</small>{% endif %}</div>
                 </div>
+                {% if player %}
+                    <div class="panel" style="margin-top: 20px; padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <strong style="display:block; margin-bottom: 8px;">Leitura atual de behavior</strong>
+                        <div style="color: var(--muted);">
+                            {% if latest_behavior_snapshot %}
+                                Score {{ latest_behavior_snapshot.behavior_score|floatformat:1 }}/100 | readiness {{ latest_behavior_snapshot.readiness_score|floatformat:1 }} | estabilidade emocional {{ latest_behavior_snapshot.emotional_stability_score|floatformat:1 }}
+                            {% else %}
+                                O atleta ainda nao possui snapshot comportamental consolidado.
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="panel" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, rgba(0, 224, 184, 0.08), rgba(255,255,255,0.03)); border: 1px solid rgba(0,224,184,0.16);">
+                        <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Behavioral Intelligence</h3>
+                        <div class="live-statline" style="margin-top: 0;">
+                            <div class="stat-card">
+                                <span>Status</span>
+                                <strong>{{ behavioral_intelligence.status }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Tendencia</span>
+                                <strong>{{ behavioral_intelligence.trend_label }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Delta</span>
+                                <strong>{{ behavioral_intelligence.delta|floatformat:1 }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Readiness</span>
+                                <strong>{{ behavioral_intelligence.readiness_band }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Estabilidade</span>
+                                <strong>{{ behavioral_intelligence.stability_band }}</strong>
+                            </div>
+                        </div>
+                        <div style="margin-top: 18px; color: var(--muted);">
+                            {{ behavioral_intelligence.alert }}
+                        </div>
+                        {% if behavioral_intelligence.drivers %}
+                            <div class="progress-stack" style="margin-top: 18px;">
+                                {% for driver in behavioral_intelligence.drivers %}
+                                    <article class="progress-card">
+                                        <div class="progress-meta">
+                                            <div class="progress-label">{{ driver.label }}</div>
+                                            <div class="progress-values">
+                                                <span>{{ driver.value|floatformat:1 }}/100</span>
+                                            </div>
+                                        </div>
+                                        <div class="progress-rail">
+                                            <div class="progress-bar current" style="width: {{ driver.value }}%;"></div>
+                                        </div>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Go Carriera</h3>
+                        <p style="color: var(--muted); margin-top: 0;">Check-in diario de prontidao, habitos e resposta comportamental. Esta entrada ja alimenta o Behavioral Intelligence com fonte oficial `go_carriera`.</p>
+                        <div class="form-grid">
+                            <div class="field-group"><label for="{{ go_carriera_form.checkin_date.id_for_label }}">{{ go_carriera_form.checkin_date.label }}</label>{{ go_carriera_form.checkin_date }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.sleep_quality.id_for_label }}">{{ go_carriera_form.sleep_quality.label }}</label>{{ go_carriera_form.sleep_quality }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.hydration.id_for_label }}">{{ go_carriera_form.hydration.label }}</label>{{ go_carriera_form.hydration }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.nutrition.id_for_label }}">{{ go_carriera_form.nutrition.label }}</label>{{ go_carriera_form.nutrition }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.energy.id_for_label }}">{{ go_carriera_form.energy.label }}</label>{{ go_carriera_form.energy }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.focus.id_for_label }}">{{ go_carriera_form.focus.label }}</label>{{ go_carriera_form.focus }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.mood.id_for_label }}">{{ go_carriera_form.mood.label }}</label>{{ go_carriera_form.mood }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.motivation.id_for_label }}">{{ go_carriera_form.motivation.label }}</label>{{ go_carriera_form.motivation }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.post_error_response.id_for_label }}">{{ go_carriera_form.post_error_response.label }}</label>{{ go_carriera_form.post_error_response }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.soreness.id_for_label }}">{{ go_carriera_form.soreness.label }}</label>{{ go_carriera_form.soreness }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.recovery.id_for_label }}">{{ go_carriera_form.recovery.label }}</label>{{ go_carriera_form.recovery }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.treatment_adherence.id_for_label }}">{{ go_carriera_form.treatment_adherence.label }}</label>{{ go_carriera_form.treatment_adherence }}</div>
+                            <div class="field-group"><label for="{{ go_carriera_form.injury_status.id_for_label }}">{{ go_carriera_form.injury_status.label }}</label>{{ go_carriera_form.injury_status }}</div>
+                            <div class="field-group" style="grid-column: 1 / -1;"><label for="{{ go_carriera_form.notes.id_for_label }}">{{ go_carriera_form.notes.label }}</label>{{ go_carriera_form.notes }}</div>
+                        </div>
+                        <div class="actions">
+                            <button class="button button-primary" type="submit" form="go-carriera-form">Salvar check-in</button>
+                        </div>
+                        <div class="progress-stack" style="margin-top: 18px;">
+                            {% for item in go_carriera_checkins %}
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">{{ item.checkin_date|date:"d/m/Y" }}</div>
+                                        <div class="progress-values">
+                                            <span>{{ item.get_injury_status_display }}</span>
+                                            <span>Energia {{ item.energy }}/10</span>
+                                            <span>Foco {{ item.focus }}/10</span>
+                                        </div>
+                                    </div>
+                                    <div style="color: var(--muted);">
+                                        Sono {{ item.sleep_quality }}/10 | Hidratacao {{ item.hydration }}/10 | Recuperacao {{ item.recovery }}/10 | Humor {{ item.mood }}/10
+                                    </div>
+                                    {% if item.notes %}
+                                        <div style="color: var(--muted); margin-top: 8px;">{{ item.notes }}</div>
+                                    {% endif %}
+                                </article>
+                            {% empty %}
+                                <div style="color: var(--muted);">Nenhum check-in Go Carriera registrado ainda.</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+                </section>
+
+                <section data-athlete-tab="comparative" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 30px;">Comparative Intelligence</h2>
+                    <p style="color: var(--muted); margin-top: 0;">Leitura comparativa em 3 eixos: atleta vs ele mesmo, atleta vs grupo contextual e atleta vs shortlist de mercado da sua base.</p>
+                    {% if player %}
+                        <div class="panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <div class="live-statline" style="margin-top: 0;">
+                                <div class="stat-card">
+                                    <span>Status longitudinal</span>
+                                    <strong>{{ comparative_intelligence.self_axis.status_label }}</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Delta vs grupo</span>
+                                    <strong>{{ comparative_intelligence.contextual_summary.delta_vs_group|floatformat:1 }}</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Shortlist</span>
+                                    <strong>{{ comparative_intelligence.shortlist_summary.size }}</strong>
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px; color: var(--muted);">{{ comparative_intelligence.executive_note }}</div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">1. Atleta vs ele mesmo</h3>
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label>Janela</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ comparative_intelligence.self_axis.window_days }} dias</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Maior avanco</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ comparative_intelligence.self_axis.best_pillar_label }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Ponto de atencao</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ comparative_intelligence.self_axis.worst_pillar_label }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Acao recomendada</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ comparative_intelligence.self_axis.recommended_action }}</div>
+                                </div>
+                            </div>
+                            <div class="progress-stack" style="margin-top: 18px;">
+                                {% for insight in comparative_intelligence.self_axis.insights %}
+                                    <article class="progress-card">
+                                        <div class="progress-meta">
+                                            <div class="progress-label">Insight</div>
+                                            <div class="progress-values">
+                                                <span>{{ insight }}</span>
+                                            </div>
+                                        </div>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">2. Atleta vs grupo contextual</h3>
+                            {% if comparative_intelligence.contextual_group %}
+                                <div class="live-statline" style="margin-top: 0;">
+                                    <div class="stat-card">
+                                        <span>Media do grupo</span>
+                                        <strong>{{ comparative_intelligence.contextual_summary.group_average|floatformat:1 }}</strong>
+                                    </div>
+                                    <div class="stat-card">
+                                        <span>Melhor do grupo</span>
+                                        <strong>{{ comparative_intelligence.contextual_summary.best_name }}</strong>
+                                    </div>
+                                    <div class="stat-card">
+                                        <span>Score do lider</span>
+                                        <strong>{{ comparative_intelligence.contextual_summary.best_score|floatformat:1 }}</strong>
+                                    </div>
+                                </div>
+                                <div class="progress-stack" style="margin-top: 18px;">
+                                    {% for item in comparative_intelligence.contextual_group %}
+                                        <article class="progress-card">
+                                            <div class="progress-meta">
+                                                <div class="progress-label">{{ item.name }}</div>
+                                                <div class="progress-values">
+                                                    <span>{{ item.club }} | {{ item.league }} | {{ item.age }} anos</span>
+                                                    <span>Fit contextual {{ item.context_fit|floatformat:0 }}/100 | Gap score {{ item.score_gap|floatformat:1 }}</span>
+                                                </div>
+                                            </div>
+                                            <div style="color: var(--muted); margin-top: 8px;">
+                                                {% for tag in item.context_tags %}{{ tag }}{% if not forloop.last %} · {% endif %}{% endfor %}
+                                            </div>
+                                        </article>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div style="color: var(--muted);">Ainda nao ha atletas suficientes na base para montar o grupo contextual.</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">3. Atleta vs shortlist de mercado</h3>
+                            {% if comparative_intelligence.shortlist %}
+                                <div style="color: var(--muted); margin-bottom: 14px;">
+                                    Mais proximo hoje: {{ comparative_intelligence.shortlist_summary.closest_name }} | gap score {{ comparative_intelligence.shortlist_summary.closest_score_gap|floatformat:1 }} | gap valor {{ comparative_intelligence.shortlist_summary.closest_value_gap|floatformat:0 }}
+                                </div>
+                                <div class="progress-stack">
+                                    {% for item in comparative_intelligence.shortlist %}
+                                        <article class="progress-card">
+                                            <div class="progress-meta">
+                                                <div class="progress-label">{{ item.name }}</div>
+                                                <div class="progress-values">
+                                                    <span>{{ item.club }} | Score {{ item.valuation_score|floatformat:1 }}</span>
+                                                    <span>Mercado {{ item.market_score|floatformat:1 }} | Performance {{ item.performance_score|floatformat:1 }}</span>
+                                                </div>
+                                            </div>
+                                            <div style="color: var(--muted); margin-top: 8px;">
+                                                Gap score {{ item.score_gap|floatformat:1 }} · Gap mercado {{ item.market_gap|floatformat:1 }} · Gap valor EUR {{ item.value_gap|floatformat:0 }}
+                                            </div>
+                                        </article>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div style="color: var(--muted);">Cadastre mais atletas para abrir a shortlist de mercado da plataforma.</div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="panel" style="padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);">
+                            Salve o atleta primeiro para liberar a camada Comparative Intelligence.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <section data-athlete-tab="projection" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 30px;">Projection Intelligence</h2>
+                    <p style="color: var(--muted); margin-top: 0;">Leitura de valorizacao, timing, adaptacao e mercados com maior aderencia para o proximo salto do atleta.</p>
+                    {% if player %}
+                        <div class="panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <div class="live-statline" style="margin-top: 0;">
+                                <div class="stat-card">
+                                    <span>Crescimento esperado</span>
+                                    <strong>{{ projection_intelligence.projected_growth_pct|floatformat:1 }}%</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Timing</span>
+                                    <strong>{{ projection_intelligence.timing_label }}</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Readiness</span>
+                                    <strong>{{ projection_intelligence.readiness_label }}</strong>
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px; color: var(--muted);">{{ projection_intelligence.market_note }}</div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Faixa de valorizacao</h3>
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label>Valor atual</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">EUR {{ projection_intelligence.current_value|floatformat:2 }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Piso</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">EUR {{ projection_intelligence.value_band.floor|floatformat:2 }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Esperado</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">EUR {{ projection_intelligence.value_band.expected|floatformat:2 }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Teto</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">EUR {{ projection_intelligence.value_band.ceiling|floatformat:2 }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Driver principal</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ projection_intelligence.main_driver }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Janela</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ projection_intelligence.period }} meses{% if projection_intelligence.opportunity_window %} | {{ projection_intelligence.opportunity_window }}{% endif %}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Risco e adaptacao</h3>
+                            <div class="progress-stack">
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Probabilidade de adaptacao</div>
+                                        <div class="progress-values">
+                                            <span>{{ projection_intelligence.adaptation_score|floatformat:1 }}/100</span>
+                                        </div>
+                                    </div>
+                                </article>
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Risco de estagnacao</div>
+                                        <div class="progress-values">
+                                            <span>{{ projection_intelligence.stagnation_risk_score|floatformat:1 }}/100</span>
+                                        </div>
+                                    </div>
+                                </article>
+                                <article class="progress-card">
+                                    <div class="progress-meta">
+                                        <div class="progress-label">Velocidade de crescimento</div>
+                                        <div class="progress-values">
+                                            <span>{{ projection_intelligence.growth_velocity_score|floatformat:1 }}/100</span>
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+                            <div style="margin-top: 16px; color: var(--muted);">{{ projection_intelligence.recommended_action }}</div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Mercados com maior aderencia</h3>
+                            {% if projection_intelligence.fit_markets %}
+                                <div class="progress-stack">
+                                    {% for item in projection_intelligence.fit_markets %}
+                                        <article class="progress-card">
+                                            <div class="progress-meta">
+                                                <div class="progress-label">{{ item.country }}{% if item.country %} | {% endif %}{{ item.league }}</div>
+                                                <div class="progress-values">
+                                                    <span>Fit {{ item.fit_score|floatformat:1 }}/100</span>
+                                                    <span>{{ item.players }} atletas de referencia</span>
+                                                </div>
+                                            </div>
+                                            <div style="color: var(--muted); margin-top: 8px;">
+                                                Media de mercado {{ item.avg_market|floatformat:1 }} | media de valor {{ item.avg_valuation|floatformat:1 }}
+                                            </div>
+                                        </article>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div style="color: var(--muted);">Ainda nao ha referencias suficientes na base para sugerir mercados alvo.</div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="panel" style="padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);">
+                            Salve o atleta primeiro para liberar a camada Projection Intelligence.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <section data-athlete-tab="opportunity" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 30px;">Opportunity Intelligence</h2>
+                    <p style="color: var(--muted); margin-top: 0;">Transforma a projeção em movimento comercial: tese, janela, riscos e shortlist inicial de clubes e ligas alvo.</p>
+                    {% if player %}
+                        <div class="panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <div class="live-statline" style="margin-top: 0;">
+                                <div class="stat-card">
+                                    <span>Janela</span>
+                                    <strong>{{ opportunity_intelligence.window_status }}</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Contrato</span>
+                                    <strong>{{ opportunity_intelligence.contract_months }} meses</strong>
+                                </div>
+                                <div class="stat-card">
+                                    <span>Movimento sugerido</span>
+                                    <strong>{{ opportunity_intelligence.recommended_move }}</strong>
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px; color: var(--muted);">{{ opportunity_intelligence.thesis }}</div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Tese de mercado</h3>
+                            <div class="form-grid">
+                                <div class="field-group">
+                                    <label>Readiness</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ opportunity_intelligence.projection.readiness_label }}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Crescimento esperado</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{{ opportunity_intelligence.projection.projected_growth_pct|floatformat:1 }}%</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Melhor liga alvo</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{% if opportunity_intelligence.target_leagues %}{{ opportunity_intelligence.target_leagues.0.country }}{% if opportunity_intelligence.target_leagues.0.country %} | {% endif %}{{ opportunity_intelligence.target_leagues.0.league }}{% else %}Sem referencia suficiente{% endif %}</div>
+                                </div>
+                                <div class="field-group">
+                                    <label>Ultima transferencia</label>
+                                    <div class="field-input" style="display: flex; align-items: center;">{% if opportunity_intelligence.latest_transfer %}{{ opportunity_intelligence.latest_transfer.from_club|default:"Origem" }} -> {{ opportunity_intelligence.latest_transfer.to_club }}{% else %}Sem historico{% endif %}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Clubes alvo</h3>
+                            {% if opportunity_intelligence.target_clubs %}
+                                <div class="progress-stack">
+                                    {% for item in opportunity_intelligence.target_clubs %}
+                                        <article class="progress-card">
+                                            <div class="progress-meta">
+                                                <div class="progress-label">{{ item.club }}</div>
+                                                <div class="progress-values">
+                                                    <span>{{ item.country }}{% if item.country %} | {% endif %}{{ item.league }}</span>
+                                                    <span>Opportunity {{ item.opportunity_score|floatformat:1 }}/100</span>
+                                                </div>
+                                            </div>
+                                            <div style="color: var(--muted); margin-top: 8px;">
+                                                Benchmark {{ item.benchmark_name }} | fit {{ item.fit_score|floatformat:1 }}{% if item.tags %} | {% for tag in item.tags %}{{ tag }}{% if not forloop.last %} · {% endif %}{% endfor %}{% endif %}
+                                            </div>
+                                        </article>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div style="color: var(--muted);">Ainda nao ha atletas suficientes na base para sugerir clubes alvo com criterio.</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="panel" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                            <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Riscos da movimentacao</h3>
+                            <div class="progress-stack">
+                                {% for risk in opportunity_intelligence.risk_flags %}
+                                    <article class="progress-card">
+                                        <div class="progress-meta">
+                                            <div class="progress-label">Risco</div>
+                                            <div class="progress-values">
+                                                <span>{{ risk }}</span>
+                                            </div>
+                                        </div>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="panel" style="padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);">
+                            Salve o atleta primeiro para liberar a camada Opportunity Intelligence.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <section data-athlete-tab="timeline" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 30px;">Timeline 360</h2>
+                    <p style="color: var(--muted); margin-top: 0;">Resumo da fundação histórica do atleta. Nesta etapa, a timeline mostra o ultimo estado consolidado por domínio e a quantidade de snapshots já gerados.</p>
+                    {% if player %}
+                        <div class="progress-stack">
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Identidade 360</div>
+                                    <div class="progress-values">
+                                        <span>{% if latest_athlete_snapshot %}Ultimo snapshot em {{ latest_athlete_snapshot.snapshot_date|date:"d/m/Y" }}{% else %}Sem snapshot{% endif %}</span>
+                                        <span>{{ snapshot_counts.athlete }} registros</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Score</div>
+                                    <div class="progress-values">
+                                        <span>{% if latest_score_snapshot %}HBX Score {{ latest_score_snapshot.final_score|floatformat:1 }} | {{ latest_score_snapshot.classification }}{% else %}Sem snapshot{% endif %}</span>
+                                        <span>{{ snapshot_counts.score }} registros</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Projection</div>
+                                    <div class="progress-values">
+                                        <span>{% if latest_projection_snapshot %}Janela {{ latest_projection_snapshot.opportunity_window }} | risco {{ latest_projection_snapshot.stagnation_risk_score|floatformat:1 }}{% else %}Sem snapshot{% endif %}</span>
+                                        <span>{{ snapshot_counts.projection }} registros</span>
+                                    </div>
+                                </div>
+                            </article>
+                            <article class="progress-card">
+                                <div class="progress-meta">
+                                    <div class="progress-label">Proximas fases</div>
+                                    <div class="progress-values">
+                                        <span>Go Carriera, Comparative, Projection e Opportunity ja estao ativos. O proximo bloco sera Reports por publico.</span>
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+                    {% else %}
+                        <div class="panel" style="padding: 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--muted);">
+                            Salve o atleta primeiro para começar a timeline 360 e gerar snapshots históricos.
+                        </div>
+                    {% endif %}
+                </section>
 
                 <div class="actions">
                     <button class="button button-primary" type="submit">{{ t.save_player }}</button>
@@ -280,6 +1106,27 @@
     </main>
 </div>
 <script>
+(() => {
+    const tabButtons = Array.from(document.querySelectorAll(".athlete-tab-button"));
+    const tabPanels = Array.from(document.querySelectorAll("[data-athlete-tab]"));
+    if (!tabButtons.length || !tabPanels.length) return;
+
+    const activateTab = (target) => {
+        tabButtons.forEach((button) => {
+            button.classList.toggle("active", button.dataset.athleteTabTarget === target);
+        });
+        tabPanels.forEach((panel) => {
+            panel.style.display = panel.dataset.athleteTab === target ? "" : "none";
+        });
+    };
+
+    tabButtons.forEach((button) => {
+        button.addEventListener("click", () => activateTab(button.dataset.athleteTabTarget));
+    });
+
+    activateTab("profile");
+})();
+
 (() => {
     const birthDateField = document.getElementById("{{ form.birth_date.id_for_label }}");
     const ageField = document.getElementById("{{ form.age.id_for_label }}");

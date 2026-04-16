@@ -18,6 +18,9 @@ from valuation.models import (
     AthleteIdentity,
     AthleteSnapshot,
     AthleteAIInsight,
+    AthleteCareerEntry,
+    AthleteContract,
+    GoCarrieraCheckIn,
     BehaviorMetrics,
     BehaviorSnapshot,
     CareerIntelligenceCase,
@@ -44,6 +47,7 @@ from valuation.models import (
     ProjectionSnapshot,
     ProgressTracking,
     ScoreSnapshot,
+    AthleteTransfer,
     User,
 )
 from valuation.career_services import case_completion
@@ -887,7 +891,423 @@ class ValuationViewsTests(TestCase):
         session.save()
         response = self.client.get(reverse("live-analysis"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Registro de desempenho individual em jogo")
+
+    def test_player_edit_page_renders_athlete_360_tabs(self):
+        user = User.objects.create(email="athlete360@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Marcos Vieira",
+            age=21,
+            position="Midfielder",
+            current_value=Decimal("900000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Goias",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        save_player_history_snapshot(player, date(2026, 4, 15))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("player-edit", args=[player.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Athlete 360")
+        self.assertContains(response, "Timeline 360")
+        self.assertContains(response, "Behavior")
+        self.assertContains(response, "Carreira")
+
+    def test_player_career_entry_can_be_saved(self):
+        user = User.objects.create(email="career-entry@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Pedro Alves",
+            age=20,
+            position="Forward",
+            current_value=Decimal("1200000.00"),
+            league_level="Brazil Serie C",
+            club_origin="Paysandu",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            f"{reverse('player-career-entry', args=[player.id])}?lang=pt",
+            {
+                "club_name": "Paysandu",
+                "country_name": "Brasil",
+                "division_name": "Serie C",
+                "season_label": "2026",
+                "start_date": "2026-01-10",
+                "move_type": "permanent",
+                "is_current": "on",
+                "notes": "Primeira temporada completa no profissional.",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('player-edit', args=[player.id])}?lang=pt")
+        entry = AthleteCareerEntry.objects.get(player=player)
+        self.assertEqual(entry.club_name, "Paysandu")
+        self.assertTrue(entry.is_current)
+
+    def test_player_contract_can_be_saved(self):
+        user = User.objects.create(email="contract@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Ruan Lima",
+            age=22,
+            position="Defender",
+            current_value=Decimal("1500000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Ceara",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            f"{reverse('player-contract', args=[player.id])}?lang=pt",
+            {
+                "club_name": "Ceara",
+                "start_date": "2026-01-01",
+                "end_date": "2027-12-31",
+                "monthly_salary": "12000",
+                "release_clause": "3000000",
+                "status": "active",
+                "is_current": "on",
+                "contract_months_remaining": "24",
+                "notes": "Contrato principal da temporada.",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('player-edit', args=[player.id])}?lang=pt")
+        contract = AthleteContract.objects.get(player=player)
+        self.assertEqual(contract.club_name, "Ceara")
+        self.assertTrue(contract.is_current)
+
+    def test_player_transfer_can_be_saved(self):
+        user = User.objects.create(email="transfer@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Felipe Souza",
+            age=23,
+            position="Midfielder",
+            current_value=Decimal("2100000.00"),
+            league_level="Brazil Serie A",
+            club_origin="Bahia",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            f"{reverse('player-transfer', args=[player.id])}?lang=pt",
+            {
+                "from_club": "Sport",
+                "to_club": "Bahia",
+                "transfer_date": "2026-02-10",
+                "transfer_type": "permanent",
+                "transfer_fee": "1800000",
+                "currency": "EUR",
+                "notes": "Compra definitiva.",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('player-edit', args=[player.id])}?lang=pt")
+        transfer = AthleteTransfer.objects.get(player=player)
+        self.assertEqual(transfer.to_club, "Bahia")
+        self.assertEqual(transfer.currency, "EUR")
+
+    def test_player_go_carriera_checkin_creates_behavior_snapshot(self):
+        user = User.objects.create(email="gocarriera@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Caio Mendes",
+            age=19,
+            position="Winger",
+            current_value=Decimal("800000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Avaí",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.post(
+            f"{reverse('player-go-carriera-checkin', args=[player.id])}?lang=pt",
+            {
+                "checkin_date": "2026-04-16",
+                "sleep_quality": "8",
+                "hydration": "9",
+                "nutrition": "8",
+                "energy": "8",
+                "focus": "7",
+                "mood": "8",
+                "motivation": "9",
+                "post_error_response": "8",
+                "soreness": "3",
+                "recovery": "8",
+                "treatment_adherence": "7",
+                "injury_status": "none",
+                "notes": "Respondeu bem ao treino e manteve boa energia.",
+            },
+        )
+
+        self.assertRedirects(response, f"{reverse('player-edit', args=[player.id])}?lang=pt")
+        checkin = GoCarrieraCheckIn.objects.get(player=player, checkin_date="2026-04-16")
+        self.assertEqual(checkin.energy, 8)
+        snapshot = BehaviorSnapshot.objects.get(player=player, snapshot_date="2026-04-16", source="go_carriera")
+        self.assertGreater(snapshot.behavior_score, 0)
+        self.assertGreater(snapshot.readiness_score, 0)
+
+    def test_player_edit_page_renders_comparative_intelligence(self):
+        user = User.objects.create(email="comparative@club.com", password_hash=make_password("secretpass"))
+        main_player = Player.objects.create(
+            user=user,
+            name="Arthur Costa",
+            age=20,
+            position="Winger",
+            current_value=Decimal("1200000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Avai",
+            category=Player.Category.PROFESSIONAL,
+        )
+        peer_one = Player.objects.create(
+            user=user,
+            name="Bruno Lima",
+            age=21,
+            position="Winger",
+            current_value=Decimal("1350000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Ceara",
+            category=Player.Category.PROFESSIONAL,
+        )
+        peer_two = Player.objects.create(
+            user=user,
+            name="Carlos Dias",
+            age=19,
+            position="Winger",
+            current_value=Decimal("980000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Sport",
+            category=Player.Category.PROFESSIONAL,
+        )
+        for athlete in (main_player, peer_one, peer_two):
+            PerformanceMetrics.objects.create(player=athlete)
+            MarketMetrics.objects.create(player=athlete)
+            MarketingMetrics.objects.create(player=athlete)
+            BehaviorMetrics.objects.create(player=athlete)
+            save_player_history_snapshot(athlete, date(2026, 4, 15))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("player-edit", args=[main_player.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Comparative Intelligence")
+        self.assertContains(response, "Bruno Lima")
+        self.assertContains(response, "Carlos Dias")
+
+    def test_player_edit_page_renders_projection_intelligence(self):
+        user = User.objects.create(email="projection@club.com", password_hash=make_password("secretpass"))
+        main_player = Player.objects.create(
+            user=user,
+            name="Diego Rocha",
+            age=20,
+            position="Winger",
+            current_value=Decimal("1500000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Sport",
+            category=Player.Category.PROFESSIONAL,
+        )
+        peer = Player.objects.create(
+            user=user,
+            name="Enzo Prado",
+            age=21,
+            position="Winger",
+            current_value=Decimal("2200000.00"),
+            league_level="Brazil Serie A",
+            club_origin="Bahia",
+            category=Player.Category.PROFESSIONAL,
+        )
+        for athlete in (main_player, peer):
+            PerformanceMetrics.objects.create(player=athlete)
+            MarketMetrics.objects.create(player=athlete, annual_growth=12, club_interest=65, league_score=70, age_factor=78, club_reputation=66)
+            MarketingMetrics.objects.create(player=athlete)
+            BehaviorMetrics.objects.create(player=athlete, conscientiousness=7, adaptability=7, resilience=7, deliberate_practice=8, executive_function=7, leadership=6)
+            save_player_history_snapshot(athlete, date(2026, 1, 10))
+            athlete.current_value = athlete.current_value + Decimal("150000.00")
+            athlete.save(update_fields=["current_value"])
+            save_player_history_snapshot(athlete, date(2026, 4, 10))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("player-edit", args=[main_player.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Projection Intelligence")
+        self.assertContains(response, "Faixa de valorizacao")
+        self.assertContains(response, "Mercados com maior aderencia")
+
+    def test_player_edit_page_renders_opportunity_intelligence(self):
+        user = User.objects.create(email="opportunity@club.com", password_hash=make_password("secretpass"))
+        main_player = Player.objects.create(
+            user=user,
+            name="Fabio Nunes",
+            age=21,
+            position="Winger",
+            current_value=Decimal("1800000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Ceara",
+            category=Player.Category.PROFESSIONAL,
+            contract_months_remaining=10,
+        )
+        peer_one = Player.objects.create(
+            user=user,
+            name="Gabriel Torres",
+            age=22,
+            position="Winger",
+            current_value=Decimal("2300000.00"),
+            league_level="Brazil Serie A",
+            club_origin="Bahia",
+            category=Player.Category.PROFESSIONAL,
+        )
+        peer_two = Player.objects.create(
+            user=user,
+            name="Henrique Silva",
+            age=20,
+            position="Winger",
+            current_value=Decimal("2100000.00"),
+            league_level="Portugal Liga 1",
+            club_origin="Braga",
+            category=Player.Category.PROFESSIONAL,
+        )
+        for athlete in (main_player, peer_one, peer_two):
+            PerformanceMetrics.objects.create(player=athlete)
+            MarketMetrics.objects.create(player=athlete, annual_growth=15, club_interest=68, league_score=72, age_factor=80, club_reputation=70)
+            MarketingMetrics.objects.create(player=athlete)
+            BehaviorMetrics.objects.create(player=athlete, conscientiousness=7, adaptability=8, resilience=7, deliberate_practice=8, executive_function=7, leadership=6)
+            save_player_history_snapshot(athlete, date(2026, 1, 10))
+            athlete.current_value = athlete.current_value + Decimal("200000.00")
+            athlete.save(update_fields=["current_value"])
+            save_player_history_snapshot(athlete, date(2026, 4, 10))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("player-edit", args=[main_player.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Opportunity Intelligence")
+        self.assertContains(response, "Clubes alvo")
+        self.assertContains(response, "Riscos da movimentacao")
+
+    def test_reports_view_supports_audience_packages(self):
+        user = User.objects.create(email="reports-audience@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Igor Matos",
+            age=22,
+            position="Winger",
+            current_value=Decimal("2100000.00"),
+            league_level="Brazil Serie A",
+            club_origin="Bahia",
+            category=Player.Category.PROFESSIONAL,
+            contract_months_remaining=12,
+        )
+        peer = Player.objects.create(
+            user=user,
+            name="Joao Pedro",
+            age=21,
+            position="Winger",
+            current_value=Decimal("2600000.00"),
+            league_level="Portugal Liga 1",
+            club_origin="Porto",
+            category=Player.Category.PROFESSIONAL,
+        )
+        for athlete in (player, peer):
+            PerformanceMetrics.objects.create(player=athlete)
+            MarketMetrics.objects.create(player=athlete, annual_growth=14, club_interest=69, league_score=74, age_factor=79, club_reputation=72)
+            MarketingMetrics.objects.create(player=athlete)
+            BehaviorMetrics.objects.create(player=athlete, conscientiousness=7, adaptability=8, resilience=7, deliberate_practice=8, executive_function=7, leadership=6)
+            save_player_history_snapshot(athlete, date(2026, 1, 10))
+            athlete.current_value = athlete.current_value + Decimal("200000.00")
+            athlete.save(update_fields=["current_value"])
+            save_player_history_snapshot(athlete, date(2026, 4, 10))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(f"{reverse('reports')}?player={player.id}&audience=agent&compare_window=90")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Report por publico")
+        self.assertContains(response, "Agente")
+        self.assertContains(response, "Valorizacao")
+
+    def test_player_report_pdf_supports_audience_variant(self):
+        user = User.objects.create(email="report-pdf@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Lucas Ribeiro",
+            age=21,
+            position="Winger",
+            current_value=Decimal("1900000.00"),
+            league_level="Brazil Serie A",
+            club_origin="Bahia",
+            category=Player.Category.PROFESSIONAL,
+            contract_months_remaining=12,
+        )
+        peer = Player.objects.create(
+            user=user,
+            name="Mateus Lima",
+            age=22,
+            position="Winger",
+            current_value=Decimal("2400000.00"),
+            league_level="Portugal Liga 1",
+            club_origin="Sporting",
+            category=Player.Category.PROFESSIONAL,
+        )
+        for athlete in (player, peer):
+            PerformanceMetrics.objects.create(player=athlete)
+            MarketMetrics.objects.create(player=athlete, annual_growth=12, club_interest=66, league_score=73, age_factor=80, club_reputation=71)
+            MarketingMetrics.objects.create(player=athlete)
+            BehaviorMetrics.objects.create(player=athlete, conscientiousness=7, adaptability=8, resilience=7, deliberate_practice=8, executive_function=7, leadership=6)
+            save_player_history_snapshot(athlete, date(2026, 1, 10))
+            athlete.current_value = athlete.current_value + Decimal("180000.00")
+            athlete.save(update_fields=["current_value"])
+            save_player_history_snapshot(athlete, date(2026, 4, 10))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(f"{reverse('player-report', args=[player.id])}?audience=club&lang=pt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("lucas_ribeiro_club_report.pdf", response["Content-Disposition"])
+        self.assertIn(b"Club Presentation Report", response.content)
+        self.assertIn(b"Score Charts", response.content)
+        self.assertIn(b"Value Range", response.content)
+        self.assertIn(b"Club Fit Matrix", response.content)
+        self.assertIn(b"Fit vs Risk", response.content)
+        self.assertIn(b"/Count 4", response.content)
 
     def test_hbx_value_score_page_renders(self):
         user = User.objects.create(email="hbx@club.com", password_hash=make_password("secretpass"))

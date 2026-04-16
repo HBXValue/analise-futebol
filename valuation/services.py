@@ -21,8 +21,11 @@ from catalog.models import Country, Division
 from clubs.models import Club
 from valuation.models import (
     AnalystNote,
+    AthleteContract,
+    AthleteTransfer,
     AthleteIdentity,
     AthleteSnapshot,
+    AthleteCareerEntry,
     BehaviorMetrics,
     BehaviorSnapshot,
     CareerIntelligenceCase,
@@ -35,6 +38,7 @@ from valuation.models import (
     MarketSnapshot,
     MarketingMetrics,
     MarketingSnapshot,
+    GoCarrieraCheckIn,
     OnBallEvent,
     PerformanceMetrics,
     PerformanceSnapshot,
@@ -464,6 +468,7 @@ def _player_identity_payload(player, identity):
 
 
 def _player_career_payload(player):
+    current_contract = player.contracts.filter(is_current=True).order_by("-id").first()
     return {
         "current_club": player.club_reference.short_name if player.club_reference_id and player.club_reference.short_name else player.club_origin,
         "current_league": player.division_reference.short_name if player.division_reference_id and player.division_reference.short_name else player.league_level,
@@ -472,6 +477,13 @@ def _player_career_payload(player):
         "current_value": float(player.current_value),
         "athlete_objectives": player.athlete_objectives,
         "profile_notes": player.profile_notes,
+        "career_entries_count": player.career_entries.count(),
+        "transfers_count": player.transfers.count(),
+        "current_contract": {
+            "club_name": current_contract.club_name,
+            "status": current_contract.status,
+            "end_date": current_contract.end_date.isoformat() if current_contract.end_date else "",
+        } if current_contract else {},
     }
 
 
@@ -2696,6 +2708,708 @@ def save_progress_tracking(player, cleaned_data):
     )
 
 
+def save_athlete_career_entry(player, cleaned_data):
+    if cleaned_data.get("is_current"):
+        AthleteCareerEntry.objects.filter(player=player, is_current=True).update(is_current=False)
+    entry = AthleteCareerEntry.objects.create(
+        player=player,
+        club_name=cleaned_data["club_name"],
+        country_name=cleaned_data.get("country_name", ""),
+        division_name=cleaned_data.get("division_name", ""),
+        season_label=cleaned_data.get("season_label", ""),
+        start_date=cleaned_data.get("start_date"),
+        end_date=cleaned_data.get("end_date"),
+        move_type=cleaned_data.get("move_type") or AthleteCareerEntry.MoveType.PERMANENT,
+        is_current=bool(cleaned_data.get("is_current")),
+        notes=cleaned_data.get("notes", ""),
+    )
+    if entry.is_current:
+        player.club_origin = entry.club_name
+        if entry.division_name:
+            player.league_level = entry.division_name
+        player.save(update_fields=["club_origin", "league_level"])
+    save_athlete_360_snapshots(
+        player,
+        source=DataSourceLog.SourceType.MANUAL,
+        payload={"career_entry_id": entry.id, "club_name": entry.club_name, "move_type": entry.move_type},
+    )
+    return entry
+
+
+def save_athlete_contract(player, cleaned_data):
+    if cleaned_data.get("is_current"):
+        AthleteContract.objects.filter(player=player, is_current=True).update(is_current=False)
+    contract = AthleteContract.objects.create(
+        player=player,
+        club_name=cleaned_data["club_name"],
+        start_date=cleaned_data.get("start_date"),
+        end_date=cleaned_data.get("end_date"),
+        monthly_salary=cleaned_data.get("monthly_salary") or Decimal("0.00"),
+        release_clause=cleaned_data.get("release_clause") or Decimal("0.00"),
+        status=cleaned_data.get("status") or AthleteContract.Status.ACTIVE,
+        is_current=bool(cleaned_data.get("is_current")),
+        notes=cleaned_data.get("notes", ""),
+    )
+    if contract.is_current:
+        player.contract_months_remaining = cleaned_data.get("contract_months_remaining")
+        player.save(update_fields=["contract_months_remaining"])
+    save_athlete_360_snapshots(
+        player,
+        source=DataSourceLog.SourceType.MANUAL,
+        payload={"contract_id": contract.id, "club_name": contract.club_name, "status": contract.status},
+    )
+    return contract
+
+
+def save_athlete_transfer(player, cleaned_data):
+    transfer = AthleteTransfer.objects.create(
+        player=player,
+        from_club=cleaned_data.get("from_club", ""),
+        to_club=cleaned_data["to_club"],
+        transfer_date=cleaned_data["transfer_date"],
+        transfer_type=cleaned_data.get("transfer_type") or AthleteTransfer.TransferType.PERMANENT,
+        transfer_fee=cleaned_data.get("transfer_fee") or Decimal("0.00"),
+        currency=cleaned_data.get("currency") or "EUR",
+        notes=cleaned_data.get("notes", ""),
+    )
+    save_athlete_360_snapshots(
+        player,
+        snapshot_date=transfer.transfer_date,
+        source=DataSourceLog.SourceType.MANUAL,
+        payload={"transfer_id": transfer.id, "from_club": transfer.from_club, "to_club": transfer.to_club},
+    )
+    return transfer
+
+
+def save_go_carriera_checkin(player, cleaned_data):
+    checkin, _ = GoCarrieraCheckIn.objects.update_or_create(
+        player=player,
+        checkin_date=cleaned_data["checkin_date"],
+        defaults={
+            "sleep_quality": cleaned_data["sleep_quality"],
+            "hydration": cleaned_data["hydration"],
+            "nutrition": cleaned_data["nutrition"],
+            "energy": cleaned_data["energy"],
+            "focus": cleaned_data["focus"],
+            "mood": cleaned_data["mood"],
+            "motivation": cleaned_data["motivation"],
+            "post_error_response": cleaned_data["post_error_response"],
+            "soreness": cleaned_data["soreness"],
+            "recovery": cleaned_data["recovery"],
+            "treatment_adherence": cleaned_data.get("treatment_adherence") or 0,
+            "injury_status": cleaned_data["injury_status"],
+            "notes": cleaned_data.get("notes", ""),
+        },
+    )
+    readiness_components = [
+        checkin.sleep_quality,
+        checkin.hydration,
+        checkin.nutrition,
+        checkin.energy,
+        checkin.focus,
+        checkin.recovery,
+    ]
+    habit_components = [
+        checkin.sleep_quality,
+        checkin.hydration,
+        checkin.nutrition,
+        checkin.treatment_adherence,
+    ]
+    emotional_components = [
+        checkin.mood,
+        checkin.motivation,
+        checkin.post_error_response,
+        checkin.focus,
+    ]
+    professionalism_components = [
+        checkin.treatment_adherence,
+        checkin.recovery,
+        checkin.focus,
+        checkin.motivation,
+    ]
+    soreness_penalty = 100 - (checkin.soreness * 10)
+    injury_recovery_score = 50
+    if checkin.injury_status == GoCarrieraCheckIn.InjuryStatus.NONE:
+        injury_recovery_score = 80
+    elif checkin.injury_status == GoCarrieraCheckIn.InjuryStatus.MANAGED:
+        injury_recovery_score = 65
+    elif checkin.injury_status == GoCarrieraCheckIn.InjuryStatus.RECOVERY:
+        injury_recovery_score = clamp((checkin.recovery * 7) + (checkin.treatment_adherence * 3))
+    behavior_score = round(
+        (
+            (sum(readiness_components) / len(readiness_components) * 10) * 0.30
+            + (sum(habit_components) / len(habit_components) * 10) * 0.20
+            + (sum(emotional_components) / len(emotional_components) * 10) * 0.20
+            + (sum(professionalism_components) / len(professionalism_components) * 10) * 0.15
+            + soreness_penalty * 0.05
+            + injury_recovery_score * 0.10
+        ),
+        2,
+    )
+    save_athlete_360_snapshots(
+        player,
+        snapshot_date=checkin.checkin_date,
+        source=DataSourceLog.SourceType.GO_CARRIERA,
+        payload={"go_carriera_checkin_id": checkin.id},
+    )
+    BehaviorSnapshot.objects.update_or_create(
+        player=player,
+        snapshot_date=checkin.checkin_date,
+        source=DataSourceLog.SourceType.GO_CARRIERA,
+        defaults={
+            "behavior_score": behavior_score,
+            "readiness_score": round(sum(readiness_components) / len(readiness_components) * 10, 2),
+            "habit_score": round(sum(habit_components) / len(habit_components) * 10, 2),
+            "emotional_stability_score": round(sum(emotional_components) / len(emotional_components) * 10, 2),
+            "professionalism_score": round(sum(professionalism_components) / len(professionalism_components) * 10, 2),
+            "adherence_score": round(((checkin.treatment_adherence + checkin.focus) / 2) * 10, 2),
+            "consistency_score": round(((checkin.energy + checkin.motivation + checkin.focus) / 3) * 10, 2),
+            "injury_recovery_behavior_score": round(injury_recovery_score, 2),
+            "engagement_score": round(((checkin.motivation + checkin.post_error_response + checkin.focus) / 3) * 10, 2),
+            "data_confidence_score": _source_confidence(DataSourceLog.SourceType.GO_CARRIERA),
+            "metrics_payload": {
+                "sleep_quality": checkin.sleep_quality,
+                "hydration": checkin.hydration,
+                "nutrition": checkin.nutrition,
+                "energy": checkin.energy,
+                "focus": checkin.focus,
+                "mood": checkin.mood,
+                "motivation": checkin.motivation,
+                "post_error_response": checkin.post_error_response,
+                "soreness": checkin.soreness,
+                "recovery": checkin.recovery,
+                "treatment_adherence": checkin.treatment_adherence,
+                "injury_status": checkin.injury_status,
+                "notes": checkin.notes,
+            },
+        },
+    )
+    DataSourceLog.objects.create(
+        player=player,
+        source_type=DataSourceLog.SourceType.GO_CARRIERA,
+        source_name="Go Carriera Daily Check-In",
+        reference_id=str(checkin.id),
+        confidence_score=_source_confidence(DataSourceLog.SourceType.GO_CARRIERA),
+        payload={"checkin_date": checkin.checkin_date.isoformat(), "injury_status": checkin.injury_status},
+    )
+    return checkin
+
+
+def build_behavioral_intelligence(player):
+    snapshots = list(player.behavior_snapshots.order_by("-snapshot_date", "-id")[:6])
+    latest = snapshots[0] if snapshots else None
+    previous = snapshots[1] if len(snapshots) > 1 else None
+    if not latest:
+        return {
+            "status": "Sem historico suficiente",
+            "trend_label": "coleta inicial",
+            "delta": 0,
+            "readiness_band": "-",
+            "stability_band": "-",
+            "alert": "Registre mais snapshots comportamentais para iniciar a leitura.",
+            "drivers": [],
+        }
+    previous_score = previous.behavior_score if previous else latest.behavior_score
+    delta = round(latest.behavior_score - previous_score, 2)
+    if latest.behavior_score >= 75:
+        status = "behavior forte"
+    elif latest.behavior_score >= 60:
+        status = "behavior consistente"
+    elif latest.behavior_score >= 45:
+        status = "behavior em observacao"
+    else:
+        status = "behavior fragil"
+    if delta >= 5:
+        trend_label = "subida clara"
+    elif delta <= -5:
+        trend_label = "queda relevante"
+    else:
+        trend_label = "estabilidade"
+    readiness_band = "alta" if latest.readiness_score >= 75 else "media" if latest.readiness_score >= 55 else "baixa"
+    stability_band = "alta" if latest.emotional_stability_score >= 75 else "media" if latest.emotional_stability_score >= 55 else "baixa"
+    drivers = [
+        {"label": "Readiness", "value": round(latest.readiness_score, 1)},
+        {"label": "Habits", "value": round(latest.habit_score, 1)},
+        {"label": "Emotional stability", "value": round(latest.emotional_stability_score, 1)},
+        {"label": "Professionalism", "value": round(latest.professionalism_score, 1)},
+        {"label": "Adherence", "value": round(latest.adherence_score, 1)},
+        {"label": "Engagement", "value": round(latest.engagement_score, 1)},
+    ]
+    weak_driver = min(drivers, key=lambda item: item["value"])
+    alert = f"Ponto de atencao atual: {weak_driver['label']} em {weak_driver['value']:.1f}."
+    return {
+        "status": status,
+        "trend_label": trend_label,
+        "delta": delta,
+        "readiness_band": readiness_band,
+        "stability_band": stability_band,
+        "alert": alert,
+        "drivers": drivers,
+    }
+
+
+def _comparison_position_key(player):
+    return normalize_position_value(getattr(player, "position", "") or "")
+
+
+def _context_fit_score(player, other):
+    score = 0.0
+    tags = []
+    if _comparison_position_key(player) and _comparison_position_key(player) == _comparison_position_key(other):
+        score += 40
+        tags.append("mesma posicao")
+    age_gap = abs((player.age or 0) - (other.age or 0))
+    age_score = max(0.0, 20.0 - (age_gap * 5.0))
+    if age_score:
+        score += age_score
+    if age_gap <= 2:
+        tags.append("faixa etaria parecida")
+    same_category = bool(player.category and other.category and player.category == other.category)
+    if same_category:
+        score += 15
+        tags.append("mesma categoria")
+    same_league = bool(
+        (player.division_reference_id and other.division_reference_id and player.division_reference_id == other.division_reference_id)
+        or (player.league_level and other.league_level and player.league_level == other.league_level)
+    )
+    if same_league:
+        score += 15
+        tags.append("mesma liga")
+    player_country_id = getattr(getattr(player, "division_reference", None), "country_id", None)
+    other_country_id = getattr(getattr(other, "division_reference", None), "country_id", None)
+    if player_country_id and other_country_id and player_country_id == other_country_id:
+        score += 10
+        tags.append("mesmo pais")
+    return round(clamp(score), 2), tags
+
+
+def build_comparative_intelligence(player, lang="pt", compare_window_days=90, shortlist_limit=5):
+    self_axis = longitudinal_bi_payload(player, lang, compare_window_days)
+    player_scores = calculate_scores(player, lang)
+    peers = list(
+        Player.objects.filter(user=player.user)
+        .exclude(pk=player.pk)
+        .select_related("division_reference__country", "club_reference")
+        .order_by("name")
+    )
+    peer_rows = []
+    for other in peers:
+        other_scores = calculate_scores(other, lang)
+        context_fit, context_tags = _context_fit_score(player, other)
+        score_gap = round(other_scores["valuation_score"] - player_scores["valuation_score"], 2)
+        market_gap = round(other_scores["market_score"] - player_scores["market_score"], 2)
+        performance_gap = round(other_scores["performance_score"] - player_scores["performance_score"], 2)
+        value_gap = round(float(other.current_value) - float(player.current_value), 2)
+        peer_rows.append(
+            {
+                "player": other,
+                "name": other.name,
+                "club": other.club_reference.short_name if getattr(other, "club_reference", None) else other.club_origin,
+                "league": (
+                    other.division_reference.short_name
+                    if getattr(other, "division_reference", None)
+                    else other.league_level
+                ),
+                "age": other.age,
+                "age_gap": abs((other.age or 0) - (player.age or 0)),
+                "context_fit": context_fit,
+                "context_tags": context_tags,
+                "valuation_score": round(other_scores["valuation_score"], 2),
+                "market_score": round(other_scores["market_score"], 2),
+                "performance_score": round(other_scores["performance_score"], 2),
+                "potential_score": round(other_scores["potential_score"], 2),
+                "score_gap": score_gap,
+                "market_gap": market_gap,
+                "performance_gap": performance_gap,
+                "value_gap": value_gap,
+            }
+        )
+
+    contextual_group = sorted(
+        peer_rows,
+        key=lambda item: (-item["context_fit"], abs(item["score_gap"]), item["age_gap"], item["name"].lower()),
+    )[:5]
+    shortlist = sorted(
+        peer_rows,
+        key=lambda item: (abs(item["score_gap"]), abs(item["value_gap"]), -item["market_score"], item["name"].lower()),
+    )[:shortlist_limit]
+
+    if contextual_group:
+        group_average = round(sum(item["valuation_score"] for item in contextual_group) / len(contextual_group), 2)
+        group_best = max(contextual_group, key=lambda item: item["valuation_score"])
+        contextual_summary = {
+            "size": len(contextual_group),
+            "group_average": group_average,
+            "delta_vs_group": round(player_scores["valuation_score"] - group_average, 2),
+            "best_name": group_best["name"],
+            "best_score": group_best["valuation_score"],
+        }
+    else:
+        contextual_summary = {
+            "size": 0,
+            "group_average": 0,
+            "delta_vs_group": 0,
+            "best_name": "",
+            "best_score": 0,
+        }
+
+    if shortlist:
+        best_market_fit = min(shortlist, key=lambda item: (abs(item["score_gap"]), abs(item["value_gap"])))
+        shortlist_summary = {
+            "size": len(shortlist),
+            "closest_name": best_market_fit["name"],
+            "closest_score_gap": best_market_fit["score_gap"],
+            "closest_value_gap": best_market_fit["value_gap"],
+        }
+    else:
+        shortlist_summary = {
+            "size": 0,
+            "closest_name": "",
+            "closest_score_gap": 0,
+            "closest_value_gap": 0,
+        }
+
+    if not peer_rows:
+        executive_note = "Cadastre mais atletas para abrir a camada comparativa por contexto e shortlist."
+    elif contextual_summary["delta_vs_group"] >= 5:
+        executive_note = "O atleta esta acima do grupo contextual e pode ser tratado como ativo premium dentro da base."
+    elif contextual_summary["delta_vs_group"] <= -5:
+        executive_note = "O atleta esta abaixo do grupo contextual. A prioridade e recuperar o pilar mais pressionado antes da proxima janela."
+    else:
+        executive_note = "O atleta esta proximo do grupo contextual. Pequenos ganhos em performance ou mercado mudam o patamar comparativo."
+
+    return {
+        "self_axis": self_axis,
+        "contextual_group": contextual_group,
+        "contextual_summary": contextual_summary,
+        "shortlist": shortlist,
+        "shortlist_summary": shortlist_summary,
+        "executive_note": executive_note,
+    }
+
+
+def build_projection_intelligence(player, lang="pt", period="12"):
+    scenarios = build_projection_scenarios(player, lang, period)
+    growth = build_growth_insights(player, lang, period)
+    scores = calculate_scores(player, lang)
+    latest_projection = player.projection_snapshots.first()
+    peers = list(
+        Player.objects.filter(user=player.user)
+        .exclude(pk=player.pk)
+        .select_related("division_reference__country", "division_reference", "club_reference")
+    )
+
+    league_buckets = {}
+    for peer in peers:
+        if _comparison_position_key(peer) != _comparison_position_key(player):
+            continue
+        league_name = (
+            peer.division_reference.short_name
+            if getattr(peer, "division_reference", None)
+            else peer.league_level
+        ) or "Liga nao definida"
+        country_name = (
+            peer.division_reference.country.name
+            if getattr(peer, "division_reference", None) and getattr(peer.division_reference, "country", None)
+            else ""
+        )
+        key = (country_name, league_name)
+        bucket = league_buckets.setdefault(
+            key,
+            {
+                "country": country_name,
+                "league": league_name,
+                "players": 0,
+                "performance_total": 0.0,
+                "market_total": 0.0,
+                "potential_total": 0.0,
+                "valuation_total": 0.0,
+            },
+        )
+        peer_scores = calculate_scores(peer, lang)
+        bucket["players"] += 1
+        bucket["performance_total"] += peer_scores["performance_score"]
+        bucket["market_total"] += peer_scores["market_score"]
+        bucket["potential_total"] += peer_scores["potential_score"]
+        bucket["valuation_total"] += peer_scores["valuation_score"]
+
+    fit_markets = []
+    for (_, _), bucket in league_buckets.items():
+        players_count = max(bucket["players"], 1)
+        avg_performance = bucket["performance_total"] / players_count
+        avg_market = bucket["market_total"] / players_count
+        avg_potential = bucket["potential_total"] / players_count
+        avg_valuation = bucket["valuation_total"] / players_count
+        fit_score = clamp(
+            (avg_performance * 0.30)
+            + (avg_market * 0.25)
+            + (avg_potential * 0.20)
+            + (scores["behavior_score"] * 0.15)
+            + (scores["potential_score"] * 0.10)
+        )
+        fit_markets.append(
+            {
+                "country": bucket["country"],
+                "league": bucket["league"],
+                "players": bucket["players"],
+                "fit_score": round(fit_score, 2),
+                "avg_valuation": round(avg_valuation, 2),
+                "avg_market": round(avg_market, 2),
+            }
+        )
+    fit_markets.sort(key=lambda item: (-item["fit_score"], -item["players"], item["league"]))
+    fit_markets = fit_markets[:5]
+
+    current_value = float(player.current_value)
+    expected_value = float(scenarios["scenarios"]["expected"])
+    conservative_value = float(scenarios["scenarios"]["conservative"])
+    aggressive_value = float(scenarios["scenarios"]["aggressive"])
+    expected_growth_pct = growth["projected_growth_pct"]
+    value_band = {
+        "floor": conservative_value,
+        "expected": expected_value,
+        "ceiling": aggressive_value,
+    }
+
+    if expected_growth_pct >= 20:
+        timing_label = "janela de aceleracao"
+    elif expected_growth_pct >= 8:
+        timing_label = "janela positiva"
+    elif expected_growth_pct <= 0:
+        timing_label = "janela de protecao"
+    else:
+        timing_label = "janela de maturacao"
+
+    adaptation_score = (
+        latest_projection.adaptation_probability_score
+        if latest_projection
+        else clamp((scores["behavior_score"] + scores["market_score"]) / 2)
+    )
+    stagnation_risk = (
+        latest_projection.stagnation_risk_score
+        if latest_projection
+        else clamp(100 - scores["potential_score"])
+    )
+    growth_velocity = (
+        latest_projection.growth_velocity_score
+        if latest_projection
+        else clamp(growth["growth_rate"])
+    )
+
+    if adaptation_score >= 75 and stagnation_risk <= 35:
+        readiness_label = "pronto para subir de patamar"
+    elif adaptation_score >= 60 and stagnation_risk <= 50:
+        readiness_label = "transicao viavel"
+    elif stagnation_risk >= 65:
+        readiness_label = "risco de estagnacao"
+    else:
+        readiness_label = "desenvolvimento assistido"
+
+    if fit_markets:
+        top_market = fit_markets[0]
+        market_note = f"Melhor aderencia atual: {top_market['country']} | {top_market['league']} ({top_market['fit_score']:.1f}/100)."
+    else:
+        market_note = "Ainda nao ha base contextual suficiente para sugerir ligas alvo com seguranca."
+
+    if expected_growth_pct >= 15 and adaptation_score >= 65:
+        recommended_action = "Preparar narrativa de salto competitivo e mapear clubes alvo na proxima janela."
+    elif stagnation_risk >= 65:
+        recommended_action = "Segurar a exposicao comercial e atacar os pilares que travam a valorizacao antes de reposicionar o atleta."
+    elif expected_growth_pct > 0:
+        recommended_action = "Construir evolucao sustentada em campo e validar o atleta em contexto competitivo acima nas proximas observacoes."
+    else:
+        recommended_action = "Priorizar recuperacao de performance e comportamento antes de qualquer movimento de mercado."
+
+    return {
+        "period": scenarios["period"],
+        "growth_rate": growth["growth_rate"],
+        "projected_growth_pct": expected_growth_pct,
+        "main_driver": growth["main_driver"],
+        "value_band": value_band,
+        "timing_label": timing_label,
+        "readiness_label": readiness_label,
+        "adaptation_score": round(adaptation_score, 2),
+        "stagnation_risk_score": round(stagnation_risk, 2),
+        "growth_velocity_score": round(growth_velocity, 2),
+        "fit_markets": fit_markets,
+        "market_note": market_note,
+        "recommended_action": recommended_action,
+        "opportunity_window": latest_projection.opportunity_window if latest_projection else "",
+        "current_value": current_value,
+    }
+
+
+def build_opportunity_intelligence(player, lang="pt", period="12"):
+    projection = build_projection_intelligence(player, lang, period)
+    comparison = build_comparative_intelligence(player, lang, compare_window_days=90, shortlist_limit=5)
+    scores = calculate_scores(player, lang)
+    current_contract = player.contracts.filter(is_current=True).order_by("-id").first()
+    latest_transfer = player.transfers.order_by("-transfer_date", "-id").first()
+    peers = list(
+        Player.objects.filter(user=player.user)
+        .exclude(pk=player.pk)
+        .select_related("division_reference__country", "division_reference", "club_reference")
+    )
+
+    targets = []
+    for peer in peers:
+        if _comparison_position_key(peer) != _comparison_position_key(player):
+            continue
+        peer_scores = calculate_scores(peer, lang)
+        club_name = peer.club_reference.short_name if getattr(peer, "club_reference", None) else peer.club_origin
+        league_name = peer.division_reference.short_name if getattr(peer, "division_reference", None) else peer.league_level
+        country_name = (
+            peer.division_reference.country.name
+            if getattr(peer, "division_reference", None) and getattr(peer.division_reference, "country", None)
+            else ""
+        )
+        fit_score, fit_tags = _context_fit_score(player, peer)
+        opportunity_score = clamp(
+            (fit_score * 0.35)
+            + (peer_scores["market_score"] * 0.20)
+            + (projection["adaptation_score"] * 0.20)
+            + (projection["projected_growth_pct"] * 0.10)
+            + (scores["performance_score"] * 0.15)
+        )
+        targets.append(
+            {
+                "club": club_name,
+                "league": league_name,
+                "country": country_name,
+                "fit_score": round(fit_score, 2),
+                "opportunity_score": round(opportunity_score, 2),
+                "benchmark_name": peer.name,
+                "benchmark_score": round(peer_scores["valuation_score"], 2),
+                "tags": fit_tags,
+            }
+        )
+
+    deduped_targets = []
+    seen = set()
+    for item in sorted(targets, key=lambda x: (-x["opportunity_score"], -x["fit_score"], x["club"])):
+        key = (item["club"], item["league"], item["country"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_targets.append(item)
+    target_clubs = deduped_targets[:5]
+
+    contract_months = player.contract_months_remaining
+    if contract_months is None and current_contract and current_contract.end_date:
+        today = timezone.localdate()
+        contract_months = max(0, (current_contract.end_date.year - today.year) * 12 + (current_contract.end_date.month - today.month))
+    contract_months = contract_months or 0
+
+    if contract_months <= 6:
+        window_status = "janela imediata"
+    elif contract_months <= 12:
+        window_status = "janela preparatoria"
+    else:
+        window_status = "janela de construcao"
+
+    risk_flags = []
+    if projection["stagnation_risk_score"] >= 65:
+        risk_flags.append("Risco de estagnacao acima do ideal.")
+    if projection["adaptation_score"] < 55:
+        risk_flags.append("Probabilidade de adaptacao ainda baixa para um salto agressivo.")
+    if scores["market_score"] < 55:
+        risk_flags.append("Mercado ainda nao respondeu no mesmo ritmo da projeção.")
+    if contract_months > 18:
+        risk_flags.append("Contrato longo reduz alavancagem de janela no curto prazo.")
+    if not risk_flags:
+        risk_flags.append("Sem bloqueio critico para abertura comercial monitorada.")
+
+    if target_clubs:
+        top_target = target_clubs[0]
+        thesis = (
+            f"O atleta pode ser apresentado como ativo de {projection['readiness_label']}, "
+            f"com encaixe inicial em {top_target['country']} | {top_target['league']} e narrativa de crescimento sustentado."
+        )
+    else:
+        thesis = (
+            "A tese comercial principal ainda deve ficar concentrada na evolucao do atleta e na consolidacao do score antes de abrir novos alvos."
+        )
+
+    if projection["projected_growth_pct"] >= 15 and contract_months <= 12:
+        recommended_move = "abrir shortlist comercial na proxima janela"
+    elif projection["projected_growth_pct"] > 0:
+        recommended_move = "observar mais uma janela e amadurecer a tese"
+    else:
+        recommended_move = "segurar movimento e priorizar recuperacao do ativo"
+
+    return {
+        "window_status": window_status,
+        "contract_months": contract_months,
+        "thesis": thesis,
+        "recommended_move": recommended_move,
+        "risk_flags": risk_flags,
+        "target_clubs": target_clubs,
+        "target_leagues": projection["fit_markets"][:3],
+        "projection": projection,
+        "comparison": comparison,
+        "latest_transfer": latest_transfer,
+    }
+
+
+def build_report_audience_packages(player, lang="pt", compare_window_days=90):
+    longitudinal = longitudinal_bi_payload(player, lang, compare_window_days)
+    projection = build_projection_intelligence(player, lang, "12")
+    opportunity = build_opportunity_intelligence(player, lang, "12")
+    comparison = build_comparative_intelligence(player, lang, compare_window_days, shortlist_limit=3)
+    scores = calculate_scores(player, lang)
+
+    packages = {
+        "athlete": {
+            "label": "Atleta",
+            "headline": "Relatorio de desenvolvimento e proximo passo de carreira.",
+            "focus": [
+                f"Maior avanco recente: {longitudinal['best_pillar_label']}.",
+                f"Ponto de atencao: {longitudinal['worst_pillar_label']}.",
+                f"Acao prioritaria: {longitudinal['recommended_action']}",
+            ],
+            "cta": "Usar como plano de desenvolvimento e acompanhamento mensal.",
+        },
+        "agent": {
+            "label": "Agente",
+            "headline": "Relatorio de valorizacao, narrativa e timing comercial.",
+            "focus": [
+                opportunity["thesis"],
+                f"Movimento sugerido: {opportunity['recommended_move']}.",
+                f"Melhor janela: {opportunity['window_status']}.",
+            ],
+            "cta": "Usar como base para posicionamento, abordagem e tese de mercado.",
+        },
+        "club": {
+            "label": "Clube",
+            "headline": "Relatorio de fit competitivo, risco e oportunidade de contratacao.",
+            "focus": [
+                f"Readiness: {projection['readiness_label']}.",
+                f"Probabilidade de adaptacao: {projection['adaptation_score']:.1f}/100.",
+                f"Risco principal: {opportunity['risk_flags'][0]}",
+            ],
+            "cta": "Usar como material de triagem e validacao tecnica/comercial.",
+        },
+        "consultancy": {
+            "label": "Consultoria",
+            "headline": "Relatorio analitico completo para decisao interna.",
+            "focus": [
+                f"Delta vs grupo contextual: {comparison['contextual_summary']['delta_vs_group']:+.1f}.",
+                f"Crescimento esperado: {projection['projected_growth_pct']:.1f}%.",
+                f"HBX Score atual: {scores['final_score']:.1f}.",
+            ],
+            "cta": "Usar como material mestre da consultoria para coordenar os proximos modulos.",
+        },
+    }
+
+    return {
+        "packages": packages,
+        "longitudinal": longitudinal,
+        "projection": projection,
+        "opportunity": opportunity,
+        "comparison": comparison,
+    }
+
+
 def save_on_ball_event(player, cleaned_data):
     return OnBallEvent.objects.create(player=player, **cleaned_data)
 
@@ -3064,12 +3778,25 @@ def csv_template_response_content():
     return buffer.getvalue()
 
 
-def generate_pdf_report(player, lang="pt"):
+def generate_pdf_report(player, lang="pt", audience="consultancy"):
+    audience = audience if audience in {"athlete", "agent", "club", "consultancy"} else "consultancy"
     scores = calculate_scores(player, lang)
     bi_payload = longitudinal_bi_payload(player, lang, 90)
+    audience_packages = build_report_audience_packages(player, lang, 90)
+    package = audience_packages["packages"][audience]
+    opportunity = audience_packages["opportunity"]
+    projection = audience_packages["projection"]
     country_name = player.division_reference.country.name if player.division_reference_id else "-"
     division_name = player.division_reference.name if player.division_reference_id else player.league_level
     club_name = player.club_reference.official_name if player.club_reference_id else player.club_origin
+    audience_titles = {
+        "athlete": "Athlete Development Report",
+        "agent": "Executive Career Report",
+        "club": "Club Presentation Report",
+        "consultancy": "Consultancy Master Report",
+    }
+    audience_title = audience_titles[audience]
+    subtitle = f"Generated for {player.name} | {package['label']} | 90-day BI summary"
     sections = [
         (
             "Executive Summary",
@@ -3077,9 +3804,14 @@ def generate_pdf_report(player, lang="pt"):
                 f"Player: {player.name}",
                 f"Club: {club_name}",
                 f"Position: {player.position}",
+                f"Audience: {package['label']}",
+                f"Headline: {package['headline']}",
                 f"Status: {bi_payload['status_label']}",
-                f"Recommended action: {bi_payload['recommended_action']}",
             ],
+        ),
+        (
+            "Audience Focus",
+            [f"- {item}" for item in package["focus"]] + [f"Use: {package['cta']}"],
         ),
         (
             "Profile",
@@ -3126,6 +3858,16 @@ def generate_pdf_report(player, lang="pt"):
             ],
         ),
         (
+            "Projection & Opportunity",
+            [
+                f"Projected growth: {projection['projected_growth_pct']:.1f}%",
+                f"Timing: {projection['timing_label']}",
+                f"Readiness: {projection['readiness_label']}",
+                f"Opportunity move: {opportunity['recommended_move']}",
+                f"Window status: {opportunity['window_status']}",
+            ],
+        ),
+        (
             "Alerts",
             [f"- {alert}" for alert in bi_payload["alerts"][:3]] or ["- No critical alerts in the current window."],
         ),
@@ -3138,67 +3880,310 @@ def generate_pdf_report(player, lang="pt"):
     def _pdf_escape(value):
         return str(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
-    stream_commands = []
-    y_position = 800
-    page_height_limit = 60
-
-    stream_commands.extend(
-        [
+    def _text(x, y, value, size=10):
+        return [
             "BT",
-            "/F1 20 Tf",
-            f"50 {y_position} Td",
-            f"({ _pdf_escape('HBX Executive Athlete Report') }) Tj",
+            f"/F1 {size} Tf",
+            f"{x} {y} Td",
+            f"({_pdf_escape(value)}) Tj",
             "ET",
         ]
-    )
-    y_position -= 26
-    stream_commands.extend(
-        [
-            "BT",
-            "/F1 10 Tf",
-            f"50 {y_position} Td",
-            f"({ _pdf_escape(f'Generated for {player.name} | 90-day BI summary') }) Tj",
-            "ET",
-        ]
-    )
-    y_position -= 24
 
-    for title, lines in sections:
-        if y_position < page_height_limit:
-            break
-        stream_commands.extend(
-            [
-                "BT",
-                "/F1 14 Tf",
-                f"50 {y_position} Td",
-                f"({ _pdf_escape(title) }) Tj",
-                "ET",
+    def _rect(x, y, width, height, fill_rgb=None, stroke_rgb=None, line_width=1):
+        commands = ["q"]
+        if line_width:
+            commands.append(f"{line_width} w")
+        if fill_rgb:
+            commands.append(f"{fill_rgb[0]} {fill_rgb[1]} {fill_rgb[2]} rg")
+        if stroke_rgb:
+            commands.append(f"{stroke_rgb[0]} {stroke_rgb[1]} {stroke_rgb[2]} RG")
+        operator = "B" if fill_rgb and stroke_rgb else "f" if fill_rgb else "S"
+        commands.append(f"{x} {y} {width} {height} re {operator}")
+        commands.append("Q")
+        return commands
+
+    def _line(x1, y1, x2, y2, stroke_rgb=(0.35, 0.39, 0.45), line_width=1):
+        return [
+            "q",
+            f"{line_width} w",
+            f"{stroke_rgb[0]} {stroke_rgb[1]} {stroke_rgb[2]} RG",
+            f"{x1} {y1} m {x2} {y2} l S",
+            "Q",
+        ]
+
+    def _audience_visual(page, audience_key, x, y, width, height):
+        page.extend(_rect(x, y, width, height, fill_rgb=(0.08, 0.10, 0.13), stroke_rgb=(0.18, 0.21, 0.26), line_width=0.8))
+        titles = {
+            "athlete": "Development Path",
+            "agent": "Market Window",
+            "club": "Club Fit Matrix",
+            "consultancy": "Advisory Snapshot",
+        }
+        page.extend(_text(x + 12, y + height - 22, titles[audience_key], 12))
+        if audience_key == "athlete":
+            values = [
+                ("Hoje", float(scores["final_score"])),
+                ("90d", float(scores["final_score"] + bi_payload["delta"]["valuation_score"])),
+                ("Prox.", float(projection["adaptation_score"])),
             ]
-        )
-        y_position -= 18
-        for line in lines:
-            if y_position < page_height_limit:
-                break
-            stream_commands.extend(
-                [
-                    "BT",
-                    "/F1 10 Tf",
-                    f"62 {y_position} Td",
-                    f"({ _pdf_escape(line) }) Tj",
-                    "ET",
-                ]
-            )
-            y_position -= 14
-        y_position -= 10
+            base_x = x + 18
+            base_y = y + 28
+            max_h = 48
+            max_v = max(max(v for _, v in values), 1)
+            for idx, (label, value) in enumerate(values):
+                bar_x = base_x + idx * 54
+                bar_h = max_h * (value / max_v)
+                page.extend(_rect(bar_x, base_y, 28, bar_h, fill_rgb=(0.00, 0.88, 0.72)))
+                page.extend(_text(bar_x - 2, base_y - 12, label, 8))
+                page.extend(_text(bar_x - 2, base_y + bar_h + 6, f"{value:.0f}", 7))
+        elif audience_key == "agent":
+            points = [
+                (x + 24, y + 34),
+                (x + 74, y + 54),
+                (x + 124, y + 66),
+                (x + 174, y + 78),
+            ]
+            for idx in range(len(points) - 1):
+                page.extend(_line(points[idx][0], points[idx][1], points[idx + 1][0], points[idx + 1][1], stroke_rgb=(0.98, 0.78, 0.31), line_width=2))
+            for px, py in points:
+                page.extend(_rect(px - 3, py - 3, 6, 6, fill_rgb=(0.98, 0.78, 0.31)))
+            page.extend(_text(x + 18, y + 16, "Timing", 8))
+            page.extend(_text(x + 92, y + 16, "Narrativa", 8))
+            page.extend(_text(x + 158, y + 16, "Janela", 8))
+        elif audience_key == "club":
+            metrics = [
+                ("Fit", projection["adaptation_score"], (0.00, 0.88, 0.72)),
+                ("Risk", 100 - projection["stagnation_risk_score"], (0.97, 0.15, 0.52)),
+                ("Ready", projection["projected_growth_pct"] * 3, (0.24, 0.63, 0.95)),
+            ]
+            start_y = y + 24
+            for idx, (label, value, color) in enumerate(metrics):
+                row_y = start_y + idx * 18
+                page.extend(_text(x + 12, row_y + 4, label, 8))
+                page.extend(_rect(x + 46, row_y, 120, 10, fill_rgb=(0.18, 0.20, 0.24)))
+                page.extend(_rect(x + 46, row_y, 120 * (max(min(value, 100), 0) / 100.0), 10, fill_rgb=color))
+        else:
+            cards = [
+                ("Delta", comparison["contextual_summary"]["delta_vs_group"]),
+                ("Growth", projection["projected_growth_pct"]),
+                ("Window", 100 - min(opportunity["contract_months"] * 4, 100)),
+            ]
+            for idx, (label, value) in enumerate(cards):
+                card_x = x + 14 + idx * 64
+                page.extend(_rect(card_x, y + 24, 54, 38, fill_rgb=(0.10, 0.12, 0.16), stroke_rgb=(0.18, 0.21, 0.26), line_width=0.6))
+                page.extend(_text(card_x + 8, y + 48, label, 7))
+                page.extend(_text(card_x + 8, y + 30, f"{value:+.0f}" if label == "Delta" else f"{value:.0f}", 11))
 
-    page_stream = "\n".join(stream_commands).encode("latin-1", errors="ignore")
-    objects = [
-        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
-        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n",
-        f"4 0 obj << /Length {len(page_stream)} >> stream\n".encode("latin-1") + page_stream + b"\nendstream endobj\n",
-        b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+    def _audience_detail_chart(page, audience_key, x, y, width, height):
+        page.extend(_rect(x, y, width, height, fill_rgb=(0.08, 0.10, 0.13), stroke_rgb=(0.18, 0.21, 0.26), line_width=0.8))
+        chart_titles = {
+            "athlete": "Development Trend",
+            "agent": "Market Momentum",
+            "club": "Fit vs Risk",
+            "consultancy": "Projection Matrix",
+        }
+        page.extend(_text(x + 12, y + height - 18, chart_titles[audience_key], 12))
+        if audience_key == "athlete":
+            data = [
+                ("Base", float(bi_payload["baseline"]["valuation_score"])),
+                ("Atual", float(bi_payload["current"]["scores"]["valuation_score"])),
+                ("Proj.", float(projection["adaptation_score"])),
+            ]
+            base_x = x + 22
+            base_y = y + 26
+            max_h = 70
+            max_v = max(max(v for _, v in data), 1)
+            for idx, (label, value) in enumerate(data):
+                bar_x = base_x + idx * 62
+                bar_h = max_h * (value / max_v)
+                page.extend(_rect(bar_x, base_y, 34, bar_h, fill_rgb=(0.00, 0.88, 0.72)))
+                page.extend(_text(bar_x - 2, base_y - 12, label, 8))
+                page.extend(_text(bar_x, base_y + bar_h + 6, f"{value:.0f}", 8))
+        elif audience_key == "agent":
+            values = [
+                ("Val.", abs(float(bi_payload["value_delta_pct"]))),
+                ("Mkt", float(scores["market_score"])),
+                ("Win", 100 - min(opportunity["contract_months"] * 4, 100)),
+            ]
+            row_y = y + 34
+            for idx, (label, value) in enumerate(values):
+                current_y = row_y + idx * 24
+                page.extend(_text(x + 14, current_y + 4, label, 8))
+                page.extend(_rect(x + 48, current_y, 150, 10, fill_rgb=(0.18, 0.20, 0.24)))
+                page.extend(_rect(x + 48, current_y, 150 * (max(min(value, 100), 0) / 100.0), 10, fill_rgb=(0.98, 0.78, 0.31)))
+        elif audience_key == "club":
+            cx = x + 95
+            cy = y + 64
+            page.extend(_line(cx, y + 24, cx, y + 112, stroke_rgb=(0.35, 0.39, 0.45)))
+            page.extend(_line(x + 20, cy, x + 180, cy, stroke_rgb=(0.35, 0.39, 0.45)))
+            px = x + 20 + (projection["adaptation_score"] / 100.0) * 160
+            py = y + 24 + ((100 - projection["stagnation_risk_score"]) / 100.0) * 88
+            page.extend(_rect(px - 4, py - 4, 8, 8, fill_rgb=(0.24, 0.63, 0.95)))
+            page.extend(_text(x + 18, y + 116, "Risco", 8))
+            page.extend(_text(x + 142, y + 116, "Fit", 8))
+        else:
+            metrics = [
+                ("Delta", comparison["contextual_summary"]["delta_vs_group"], (0.24, 0.63, 0.95)),
+                ("Growth", projection["projected_growth_pct"], (0.98, 0.78, 0.31)),
+                ("Adapt", projection["adaptation_score"], (0.00, 0.88, 0.72)),
+                ("Risk", projection["stagnation_risk_score"], (0.97, 0.15, 0.52)),
+            ]
+            start_x = x + 18
+            for idx, (label, value, color) in enumerate(metrics):
+                card_x = start_x + (idx % 2) * 88
+                card_y = y + 28 + (idx // 2) * 34
+                page.extend(_rect(card_x, card_y, 74, 24, fill_rgb=(0.10, 0.12, 0.16), stroke_rgb=(0.18, 0.21, 0.26), line_width=0.6))
+                page.extend(_text(card_x + 8, card_y + 14, label, 7))
+                page.extend(_text(card_x + 8, card_y + 5, f"{value:+.0f}" if label == "Delta" else f"{value:.0f}", 9))
+
+    page_height_limit = 70
+
+    pillar_chart = [
+        ("Performance", float(scores["performance_score"]), (0.00, 0.88, 0.72)),
+        ("Market", float(scores["market_score"]), (0.98, 0.78, 0.31)),
+        ("Marketing", float(scores["marketing_score"]), (0.24, 0.63, 0.95)),
+        ("Behavior", float(scores["behavior_score"]), (0.97, 0.15, 0.52)),
+        ("Potential", float(scores["potential_score"]), (0.52, 0.80, 0.09)),
     ]
+    value_chart = [
+        ("Atual", float(player.current_value)),
+        ("Piso", float(projection["value_band"]["floor"])),
+        ("Esperado", float(projection["value_band"]["expected"])),
+        ("Teto", float(projection["value_band"]["ceiling"])),
+    ]
+    max_value = max(value for _, value in value_chart) or 1.0
+
+    pages = []
+
+    def _new_page():
+        return []
+
+    def _page_header(page, title, subtitle_text="", page_number=1):
+        page.extend(_rect(36, 36, 523, 770, fill_rgb=(0.04, 0.05, 0.07), stroke_rgb=(0.12, 0.14, 0.18), line_width=1))
+        page.extend(_rect(36, 742, 523, 64, fill_rgb=(0.08, 0.10, 0.13)))
+        page.extend(_text(52, 782, title, 20))
+        if subtitle_text:
+            page.extend(_text(52, 760, subtitle_text, 10))
+        page.extend(_text(510, 760, f"Page {page_number}", 9))
+
+    def _stat_card(page, x, y, width, title, value, note=""):
+        page.extend(_rect(x, y, width, 54, fill_rgb=(0.10, 0.12, 0.16), stroke_rgb=(0.16, 0.18, 0.24), line_width=0.8))
+        page.extend(_text(x + 12, y + 35, title, 8))
+        page.extend(_text(x + 12, y + 17, value, 13))
+        if note:
+            page.extend(_text(x + 12, y + 5, note, 7))
+
+    def _section_card(page, x, y_top, width, title, lines):
+        height = 28 + (len(lines) * 14) + 12
+        y = y_top - height
+        page.extend(_rect(x, y, width, height, fill_rgb=(0.08, 0.10, 0.13), stroke_rgb=(0.18, 0.21, 0.26), line_width=0.8))
+        page.extend(_text(x + 12, y_top - 18, title, 12))
+        line_y = y_top - 38
+        for line in lines:
+            page.extend(_text(x + 14, line_y, line, 9))
+            line_y -= 14
+        return y - 14
+
+    cover_page = _new_page()
+    _page_header(cover_page, audience_title, subtitle, 1)
+    cover_page.extend(_text(52, 720, package["headline"], 13))
+    cover_page.extend(_text(52, 700, package["cta"], 10))
+    _stat_card(cover_page, 52, 626, 116, "HBX Score", f"{scores['final_score']:.1f}", scores["classification"])
+    _stat_card(cover_page, 178, 626, 116, "Valor atual", f"EUR {float(player.current_value)/1000000:.2f}M", player.position)
+    _stat_card(cover_page, 304, 626, 116, "Valor proj.", f"EUR {float(scores['projected_value'])/1000000:.2f}M", projection["timing_label"])
+    _stat_card(cover_page, 430, 626, 103, "Janela", opportunity["window_status"], opportunity["recommended_move"])
+
+    cover_page.extend(_text(50, 594, "Score Charts", 14))
+    left_chart_x = 50
+    left_chart_y = 420
+    left_chart_w = 240
+    left_chart_h = 150
+    right_chart_x = 320
+    right_chart_y = left_chart_y
+    right_chart_w = 220
+    right_chart_h = 150
+
+    cover_page.extend(_rect(left_chart_x, left_chart_y, left_chart_w, left_chart_h, fill_rgb=(0.08, 0.10, 0.13), stroke_rgb=(0.20, 0.23, 0.28), line_width=0.8))
+    cover_page.extend(_rect(right_chart_x, right_chart_y, right_chart_w, right_chart_h, fill_rgb=(0.08, 0.10, 0.13), stroke_rgb=(0.20, 0.23, 0.28), line_width=0.8))
+    cover_page.extend(_text(left_chart_x + 12, left_chart_y + left_chart_h - 16, "Pillar Breakdown", 11))
+    cover_page.extend(_text(right_chart_x + 12, right_chart_y + right_chart_h - 16, "Value Range", 11))
+
+    bar_x = left_chart_x + 18
+    bar_y = left_chart_y + 20
+    bar_h = 18
+    bar_gap = 8
+    bar_max_w = left_chart_w - 95
+    for index, (label, value, color) in enumerate(pillar_chart):
+        current_y = bar_y + ((len(pillar_chart) - 1 - index) * (bar_h + bar_gap))
+        cover_page.extend(_text(bar_x, current_y + 4, label, 8))
+        cover_page.extend(_rect(bar_x + 58, current_y, bar_max_w, bar_h, fill_rgb=(0.18, 0.20, 0.24)))
+        cover_page.extend(_rect(bar_x + 58, current_y, bar_max_w * (max(min(value, 100), 0) / 100.0), bar_h, fill_rgb=color))
+        cover_page.extend(_text(bar_x + 58 + bar_max_w + 6, current_y + 4, f"{value:.0f}", 8))
+
+    chart_base_x = right_chart_x + 18
+    chart_base_y = right_chart_y + 30
+    chart_height = 88
+    chart_bar_w = 32
+    chart_gap = 16
+    cover_page.extend(_line(chart_base_x, chart_base_y, chart_base_x + 170, chart_base_y))
+    cover_page.extend(_line(chart_base_x, chart_base_y, chart_base_x, chart_base_y + chart_height + 8))
+    for idx, (label, value) in enumerate(value_chart):
+        x = chart_base_x + 12 + idx * (chart_bar_w + chart_gap)
+        height = chart_height * (value / max_value)
+        fill = (0.98, 0.78, 0.31) if label in {"Esperado", "Teto"} else (0.24, 0.63, 0.95) if label == "Atual" else (0.00, 0.88, 0.72)
+        cover_page.extend(_rect(x, chart_base_y, chart_bar_w, height, fill_rgb=fill))
+        cover_page.extend(_text(x - 2, chart_base_y - 12, label, 8))
+        cover_page.extend(_text(x - 6, chart_base_y + height + 6, f"{value/1000000:.1f}M", 7))
+
+    cover_page.extend(_text(50, 388, "Audience Focus", 14))
+    cover_page.extend(_rect(50, 258, 490, 106, fill_rgb=(0.08, 0.10, 0.13), stroke_rgb=(0.18, 0.21, 0.26), line_width=0.8))
+    _audience_visual(cover_page, audience, 50, 258, 208, 106)
+    cover_page.extend(_text(276, 342, "Audience Focus", 12))
+    bullet_y = 320
+    for item in package["focus"][:3]:
+        cover_page.extend(_text(282, bullet_y, f"- {item}", 10))
+        bullet_y -= 18
+    cover_page.extend(_text(282, 266, f"Use: {package['cta']}", 10))
+    pages.append(cover_page)
+
+    current_page = _new_page()
+    _page_header(current_page, audience_title, "Analytical details", 2)
+    y_position = 720
+    _audience_detail_chart(current_page, audience, 50, 548, 230, 130)
+    y_position = 530
+    for title, lines in sections:
+        estimated_height = 28 + (len(lines) * 14) + 12
+        if y_position - estimated_height < page_height_limit:
+            pages.append(current_page)
+            current_page = _new_page()
+            _page_header(current_page, audience_title, "Continued analytical details", len(pages) + 1)
+            y_position = 720
+        y_position = _section_card(current_page, 50, y_position, 490, title, lines)
+    pages.append(current_page)
+
+    page_streams = ["\n".join(page).encode("latin-1", errors="ignore") for page in pages]
+
+    objects = [b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"]
+    kids = []
+    next_object_id = 3
+    content_object_ids = []
+    for _ in page_streams:
+        kids.append(f"{next_object_id} 0 R")
+        content_object_ids.append(next_object_id + 1)
+        next_object_id += 2
+    font_object_id = next_object_id
+    objects.append(f"2 0 obj << /Type /Pages /Kids [{' '.join(kids)}] /Count {len(page_streams)} >> endobj\n".encode("latin-1"))
+    page_object_id = 3
+    for content_id in content_object_ids:
+        objects.append(
+            f"{page_object_id} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents {content_id} 0 R /Resources << /Font << /F1 {font_object_id} 0 R >> >> >> endobj\n".encode("latin-1")
+        )
+        page_object_id += 2
+    for idx, page_stream in enumerate(page_streams):
+        content_id = content_object_ids[idx]
+        objects.append(f"{content_id} 0 obj << /Length {len(page_stream)} >> stream\n".encode("latin-1") + page_stream + b"\nendstream endobj\n")
+    objects.append(f"{font_object_id} 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n".encode("latin-1"))
+
     pdf = bytearray(b"%PDF-1.4\n")
     offsets = [0]
     for obj in objects:

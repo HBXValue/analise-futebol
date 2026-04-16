@@ -370,6 +370,109 @@ class CSVUploadForm(forms.Form):
         self.fields["csv_file"].label = tr(lang, "csv_file")
 
 
+class AthleteCareerEntryForm(forms.Form):
+    club_name = forms.CharField(max_length=160)
+    country_name = forms.CharField(max_length=120, required=False)
+    division_name = forms.CharField(max_length=120, required=False)
+    season_label = forms.CharField(max_length=60, required=False)
+    start_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    end_date = forms.DateField(required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    move_type = forms.ChoiceField()
+    is_current = forms.BooleanField(required=False)
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
+
+    def __init__(self, *args, **kwargs):
+        lang = kwargs.pop("lang", "pt")
+        self.lang = lang
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "field-input"
+        self.fields["club_name"].label = "Clube"
+        self.fields["country_name"].label = "Pais"
+        self.fields["division_name"].label = "Liga / divisao"
+        self.fields["season_label"].label = "Temporada"
+        self.fields["start_date"].label = "Inicio"
+        self.fields["end_date"].label = "Fim"
+        self.fields["move_type"].label = "Tipo de movimento"
+        self.fields["is_current"].label = "Clube atual"
+        self.fields["notes"].label = "Notas"
+        self.fields["move_type"].choices = [("", "---------")] + list(Player.Category.choices)
+        self.fields["move_type"].choices = [
+            ("", "---------"),
+            ("permanent", "Contrato definitivo"),
+            ("loan", "Emprestimo"),
+            ("academy", "Base"),
+            ("promotion", "Promocao interna"),
+            ("trial", "Periodo de avaliacao"),
+            ("other", "Outro"),
+        ]
+        self.fields["club_name"].widget.attrs["placeholder"] = "Ex.: Palmeiras"
+        self.fields["country_name"].widget.attrs["placeholder"] = "Ex.: Brasil"
+        self.fields["division_name"].widget.attrs["placeholder"] = "Ex.: Serie A"
+        self.fields["season_label"].widget.attrs["placeholder"] = "Ex.: 2026"
+        self.fields["notes"].widget.attrs["placeholder"] = "Ex.: estreia no profissional, emprestimo, retorno, troca de categoria."
+
+    def clean(self):
+        cleaned_data = super().clean()
+        start_date = cleaned_data.get("start_date")
+        end_date = cleaned_data.get("end_date")
+        is_current = cleaned_data.get("is_current")
+        if start_date and end_date and end_date < start_date:
+            self.add_error("end_date", "A data final nao pode ser anterior a data inicial.")
+        if is_current:
+            cleaned_data["end_date"] = None
+        return cleaned_data
+
+
+class GoCarrieraCheckInForm(forms.Form):
+    checkin_date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    sleep_quality = forms.IntegerField(min_value=0, max_value=10)
+    hydration = forms.IntegerField(min_value=0, max_value=10)
+    nutrition = forms.IntegerField(min_value=0, max_value=10)
+    energy = forms.IntegerField(min_value=0, max_value=10)
+    focus = forms.IntegerField(min_value=0, max_value=10)
+    mood = forms.IntegerField(min_value=0, max_value=10)
+    motivation = forms.IntegerField(min_value=0, max_value=10)
+    post_error_response = forms.IntegerField(min_value=0, max_value=10)
+    soreness = forms.IntegerField(min_value=0, max_value=10)
+    recovery = forms.IntegerField(min_value=0, max_value=10)
+    treatment_adherence = forms.IntegerField(min_value=0, max_value=10, required=False, initial=0)
+    injury_status = forms.ChoiceField()
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
+
+    def __init__(self, *args, **kwargs):
+        lang = kwargs.pop("lang", "pt")
+        self.lang = lang
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "field-input"
+            field.widget.attrs["form"] = "go-carriera-form"
+        labels = {
+            "checkin_date": "Data do check-in",
+            "sleep_quality": "Sono",
+            "hydration": "Hidratacao",
+            "nutrition": "Alimentacao",
+            "energy": "Energia",
+            "focus": "Foco",
+            "mood": "Humor",
+            "motivation": "Motivacao",
+            "post_error_response": "Postura apos erro",
+            "soreness": "Dor / desconforto",
+            "recovery": "Recuperacao",
+            "treatment_adherence": "Aderencia ao tratamento",
+            "injury_status": "Status de lesao",
+            "notes": "Observacoes do dia",
+        }
+        for field_name, label in labels.items():
+            self.fields[field_name].label = label
+        self.fields["injury_status"].choices = [
+            ("none", "Sem lesao"),
+            ("managed", "Controle de carga"),
+            ("recovery", "Em recuperacao"),
+        ]
+        self.fields["notes"].widget.attrs["placeholder"] = "Ex.: sentiu desgaste, respondeu bem ao treino, precisou ajustar carga."
+
+
 class ComparisonForm(forms.Form):
     compare = forms.MultipleChoiceField(
         required=False,
