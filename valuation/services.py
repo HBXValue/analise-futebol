@@ -19,7 +19,31 @@ from valuation.constants import normalize_position_value
 from valuation.i18n import tr
 from catalog.models import Country, Division
 from clubs.models import Club
-from valuation.models import AnalystNote, BehaviorMetrics, CareerIntelligenceCase, DevelopmentPlan, HBXValueProfile, LiveAnalysisEvent, LiveAnalysisSession, MarketMetrics, MarketingMetrics, OnBallEvent, PerformanceMetrics, Player, PlayerHistory, ProgressTracking
+from valuation.models import (
+    AnalystNote,
+    AthleteIdentity,
+    AthleteSnapshot,
+    BehaviorMetrics,
+    BehaviorSnapshot,
+    CareerIntelligenceCase,
+    DataSourceLog,
+    DevelopmentPlan,
+    HBXValueProfile,
+    LiveAnalysisEvent,
+    LiveAnalysisSession,
+    MarketMetrics,
+    MarketSnapshot,
+    MarketingMetrics,
+    MarketingSnapshot,
+    OnBallEvent,
+    PerformanceMetrics,
+    PerformanceSnapshot,
+    Player,
+    PlayerHistory,
+    ProjectionSnapshot,
+    ProgressTracking,
+    ScoreSnapshot,
+)
 
 
 RANGES = {
@@ -398,6 +422,271 @@ def calculate_scores(player, lang="pt"):
         "classification": _classification_label(final_score),
         "traffic_light": _traffic_light_label(final_score),
         "position_group": athlete.position_group,
+    }
+
+
+def ensure_athlete_identity(player):
+    identity, _ = AthleteIdentity.objects.get_or_create(
+        player=player,
+        defaults={"status_label": player.squad_status or player.category or ""},
+    )
+    return identity
+
+
+def _metric_payload(instance, fields):
+    if instance is None:
+        return {field: 0 for field in fields}
+    return {field: getattr(instance, field, 0) for field in fields}
+
+
+def _player_identity_payload(player, identity):
+    country = player.division_reference.country.name if player.division_reference_id else ""
+    return {
+        "player_uuid": str(identity.player_uuid),
+        "name": player.name,
+        "public_name": player.public_name,
+        "birth_date": player.birth_date.isoformat() if player.birth_date else "",
+        "age": player.age,
+        "nationality": player.nationality,
+        "secondary_nationalities": identity.secondary_nationalities,
+        "current_country": country,
+        "passports": identity.passports,
+        "international_eligibility": identity.international_eligibility,
+        "dominant_foot": player.dominant_foot,
+        "position": player.position,
+        "secondary_positions": player.secondary_positions,
+        "category": player.category,
+        "squad_status": player.squad_status,
+        "height_cm": player.height_cm,
+        "weight_kg": player.weight_kg,
+        "external_ids": identity.external_ids,
+    }
+
+
+def _player_career_payload(player):
+    return {
+        "current_club": player.club_reference.short_name if player.club_reference_id and player.club_reference.short_name else player.club_origin,
+        "current_league": player.division_reference.short_name if player.division_reference_id and player.division_reference.short_name else player.league_level,
+        "current_country": player.division_reference.country.name if player.division_reference_id else "",
+        "contract_months_remaining": player.contract_months_remaining,
+        "current_value": float(player.current_value),
+        "athlete_objectives": player.athlete_objectives,
+        "profile_notes": player.profile_notes,
+    }
+
+
+def _source_confidence(source):
+    confidence_by_source = {
+        DataSourceLog.SourceType.GO_CARRIERA: 85,
+        DataSourceLog.SourceType.API: 80,
+        DataSourceLog.SourceType.MATCH_ANALYSIS: 75,
+        DataSourceLog.SourceType.HBX_VALUE: 70,
+        DataSourceLog.SourceType.IMPORT: 65,
+        DataSourceLog.SourceType.MANUAL: 55,
+        DataSourceLog.SourceType.AI: 50,
+        DataSourceLog.SourceType.SYSTEM: 50,
+    }
+    return confidence_by_source.get(source, 50)
+
+
+def _json_safe(value):
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _upsert_snapshot(model, player, snapshot_date, source, defaults):
+    snapshot, _ = model.objects.update_or_create(
+        player=player,
+        snapshot_date=snapshot_date,
+        source=source,
+        defaults=defaults,
+    )
+    return snapshot
+
+
+def save_athlete_360_snapshots(player, snapshot_date=None, source=DataSourceLog.SourceType.SYSTEM, related_report=None, payload=None):
+    snapshot_date = snapshot_date or timezone.localdate()
+    confidence = _source_confidence(source)
+    identity = ensure_athlete_identity(player)
+    scores = calculate_scores(player)
+    performance = getattr(player, "performance_metrics", None)
+    market = getattr(player, "market_metrics", None)
+    marketing = getattr(player, "marketing_metrics", None)
+    behavior = getattr(player, "behavior_metrics", None)
+    performance_payload = _metric_payload(
+        performance,
+        ("xg", "xa", "passes_pct", "dribbles_pct", "tackles_pct", "high_intensity_distance", "final_third_recoveries"),
+    )
+    market_payload = _metric_payload(
+        market,
+        ("annual_growth", "club_interest", "league_score", "age_factor", "club_reputation"),
+    )
+    marketing_payload = _metric_payload(
+        marketing,
+        (
+            "instagram_followers",
+            "instagram_engagement",
+            "tiktok_followers",
+            "tiktok_engagement",
+            "x_followers",
+            "x_engagement",
+            "youtube_subscribers",
+            "youtube_avg_views",
+            "followers",
+            "engagement",
+            "media_mentions",
+            "sponsorships",
+            "sentiment_score",
+        ),
+    )
+    behavior_payload = _metric_payload(
+        behavior,
+        ("conscientiousness", "adaptability", "resilience", "deliberate_practice", "executive_function", "leadership"),
+    )
+    data_log = DataSourceLog.objects.create(
+        player=player,
+        source_type=source,
+        source_name="HBX 360 Snapshot",
+        reference_id=str(getattr(related_report, "id", "")) if related_report else "",
+        confidence_score=confidence,
+        payload=_json_safe(payload or {}),
+    )
+    athlete_snapshot = _upsert_snapshot(
+        AthleteSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "identity_payload": _player_identity_payload(player, identity),
+            "career_payload": _player_career_payload(player),
+            "data_confidence_score": confidence,
+        },
+    )
+    performance_snapshot = _upsert_snapshot(
+        PerformanceSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "related_report": related_report,
+            "performance_score": scores["performance_score"],
+            "output_score": clamp((scores["performance_score"] * 0.6) + (scores["potential_score"] * 0.4)),
+            "positional_fit_score": clamp(scores["performance_score"]),
+            "consistency_score": clamp(scores["behavior_score"]),
+            "context_score": clamp(scores["market_score"]),
+            "data_confidence_score": confidence,
+            "metrics_payload": performance_payload,
+        },
+    )
+    behavior_snapshot = _upsert_snapshot(
+        BehaviorSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "behavior_score": scores["behavior_score"],
+            "readiness_score": clamp((scores["behavior_score"] * 0.65) + (scores["performance_score"] * 0.35)),
+            "habit_score": clamp((behavior_payload["conscientiousness"] + behavior_payload["deliberate_practice"]) * 5),
+            "emotional_stability_score": clamp((behavior_payload["resilience"] + behavior_payload["adaptability"]) * 5),
+            "professionalism_score": clamp((behavior_payload["conscientiousness"] + behavior_payload["leadership"]) * 5),
+            "adherence_score": clamp(behavior_payload["deliberate_practice"] * 10),
+            "consistency_score": clamp(scores["behavior_score"]),
+            "injury_recovery_behavior_score": 0,
+            "engagement_score": clamp((behavior_payload["leadership"] + behavior_payload["executive_function"]) * 5),
+            "data_confidence_score": confidence,
+            "metrics_payload": behavior_payload,
+        },
+    )
+    market_snapshot = _upsert_snapshot(
+        MarketSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "market_score": scores["market_score"],
+            "current_value": player.current_value,
+            "projected_value": scores["projected_value"],
+            "contract_timing_score": clamp(100 - float(player.contract_months_remaining or 0)),
+            "league_context_score": clamp(market_payload["league_score"]),
+            "club_reputation_score": clamp(market_payload["club_reputation"]),
+            "data_confidence_score": confidence,
+            "metrics_payload": market_payload,
+        },
+    )
+    marketing_snapshot = _upsert_snapshot(
+        MarketingSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "marketing_score": scores["marketing_score"],
+            "media_attention_score": clamp(marketing_payload["media_mentions"]),
+            "exposure_performance_ratio": clamp((scores["marketing_score"] / max(scores["performance_score"], 1)) * 50),
+            "narrative_sentiment_score": clamp(marketing_payload["sentiment_score"]),
+            "authority_score": clamp((marketing_payload["engagement"] * 5) + (marketing_payload["sponsorships"] * 5)),
+            "growth_momentum_score": clamp(market_payload["annual_growth"]),
+            "buzz_stability_score": clamp((scores["marketing_score"] + scores["market_score"]) / 2),
+            "data_confidence_score": confidence,
+            "metrics_payload": marketing_payload,
+        },
+    )
+    scores_payload = {
+        key: (float(value) if isinstance(value, Decimal) else value)
+        for key, value in scores.items()
+    }
+    score_snapshot = _upsert_snapshot(
+        ScoreSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "performance_score": scores["performance_score"],
+            "market_score": scores["market_score"],
+            "marketing_score": scores["marketing_score"],
+            "behavior_score": scores["behavior_score"],
+            "potential_score": scores["potential_score"],
+            "final_score": scores["final_score"],
+            "adjustment": scores["adjustment"],
+            "classification": scores["classification"],
+            "traffic_light": scores["traffic_light"],
+            "data_confidence_score": confidence,
+            "scores_payload": scores_payload,
+        },
+    )
+    projection_snapshot = _upsert_snapshot(
+        ProjectionSnapshot,
+        player,
+        snapshot_date,
+        source,
+        {
+            "potential_score": scores["potential_score"],
+            "projected_value": scores["projected_value"],
+            "growth_velocity_score": clamp(market_payload["annual_growth"]),
+            "stagnation_risk_score": clamp(100 - scores["potential_score"]),
+            "adaptation_probability_score": clamp((scores["behavior_score"] + scores["market_score"]) / 2),
+            "opportunity_window": "curto prazo" if scores["market_score"] >= 70 else "desenvolvimento",
+            "data_confidence_score": confidence,
+            "projection_payload": {
+                "growth_potential_label": scores["growth_potential_label"],
+                "current_value": float(player.current_value),
+                "projected_value": float(scores["projected_value"]),
+            },
+        },
+    )
+    return {
+        "data_log": data_log,
+        "athlete": athlete_snapshot,
+        "performance": performance_snapshot,
+        "behavior": behavior_snapshot,
+        "market": market_snapshot,
+        "marketing": marketing_snapshot,
+        "score": score_snapshot,
+        "projection": projection_snapshot,
     }
 
 
@@ -1546,7 +1835,13 @@ def _live_report_note_fields(report):
 
 def sync_live_report_to_integrated_modules(player, report):
     case = sync_integrated_player_modules(player)
-    save_player_history_snapshot(player, report.match_date)
+    save_player_history_snapshot(
+        player,
+        report.match_date,
+        source=DataSourceLog.SourceType.MATCH_ANALYSIS,
+        related_report=report,
+        payload={"report_id": report.id, "competition": report.competition, "opponent": report.opponent},
+    )
 
     note_defaults = _live_report_note_fields(report)
     live_note = (
@@ -1593,6 +1888,11 @@ def save_hbx_value_profile(player, cleaned_data, source=HBXValueProfile.Source.M
     )
     from valuation.ai_service import refresh_ai_insights_for_player
 
+    save_athlete_360_snapshots(
+        player,
+        source=DataSourceLog.SourceType.HBX_VALUE,
+        payload={"hbx_value_profile_id": profile.id, "source": source},
+    )
     refresh_ai_insights_for_player(player)
     return profile
 
@@ -2311,7 +2611,7 @@ def save_player_bundle(user, cleaned_data, player=None):
     return player
 
 
-def save_player_history_snapshot(player, snapshot_date=None):
+def save_player_history_snapshot(player, snapshot_date=None, source=DataSourceLog.SourceType.SYSTEM, related_report=None, payload=None):
     snapshot_date = snapshot_date or timezone.localdate()
     scores = calculate_scores(player)
     history_entry = PlayerHistory.objects.filter(player=player, date=snapshot_date).order_by("-id").first()
@@ -2323,8 +2623,9 @@ def save_player_history_snapshot(player, snapshot_date=None):
         history_entry.valuation_score = scores["valuation_score"]
         history_entry.current_value = player.current_value
         history_entry.save()
+        save_athlete_360_snapshots(player, snapshot_date, source=source, related_report=related_report, payload=payload)
         return history_entry
-    return PlayerHistory.objects.create(
+    history_entry = PlayerHistory.objects.create(
         player=player,
         date=snapshot_date,
         performance_score=scores["performance_score"],
@@ -2334,6 +2635,8 @@ def save_player_history_snapshot(player, snapshot_date=None):
         valuation_score=scores["valuation_score"],
         current_value=player.current_value,
     )
+    save_athlete_360_snapshots(player, snapshot_date, source=source, related_report=related_report, payload=payload)
+    return history_entry
 
 
 def save_manual_history_snapshot(player, cleaned_data):
@@ -2351,11 +2654,23 @@ def save_manual_history_snapshot(player, cleaned_data):
         for key, value in values.items():
             setattr(history_entry, key, value)
         history_entry.save()
+        save_athlete_360_snapshots(
+            player,
+            cleaned_data["date"],
+            source=DataSourceLog.SourceType.MANUAL,
+            payload={"manual_history_snapshot": values},
+        )
         from valuation.ai_service import refresh_ai_insights_for_player
 
         refresh_ai_insights_for_player(player)
         return history_entry
     history_entry = PlayerHistory.objects.create(player=player, date=cleaned_data["date"], **values)
+    save_athlete_360_snapshots(
+        player,
+        cleaned_data["date"],
+        source=DataSourceLog.SourceType.MANUAL,
+        payload={"manual_history_snapshot": values},
+    )
     from valuation.ai_service import refresh_ai_insights_for_player
 
     refresh_ai_insights_for_player(player)

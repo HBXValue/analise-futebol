@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from django.db import models
 
@@ -145,6 +146,25 @@ class AthleteAIInsight(models.Model):
         db_table = "athlete_ai_insights"
         ordering = ["-updated_at", "-id"]
         unique_together = ("player", "scope", "window_days", "language", "prompt_version")
+
+
+class AthleteIdentity(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="identity_360")
+    player_uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    secondary_nationalities = models.JSONField(default=list, blank=True)
+    passports = models.JSONField(default=list, blank=True)
+    international_eligibility = models.JSONField(default=list, blank=True)
+    external_ids = models.JSONField(default=dict, blank=True)
+    status_label = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "athlete_identities"
+        ordering = ["player__name", "id"]
+
+    def __str__(self):
+        return f"{self.player.name} | {self.player_uuid}"
 
 
 class PerformanceMetrics(models.Model):
@@ -390,6 +410,180 @@ class LivePlayerEvaluation(models.Model):
     class Meta:
         db_table = "live_player_evaluations"
         ordering = ["-match_date", "-saved_at", "-id"]
+
+
+class DataSourceLog(models.Model):
+    class SourceType(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        MATCH_ANALYSIS = "match_analysis", "Match Analysis"
+        HBX_VALUE = "hbx_value", "HBX Value"
+        GO_CARRIERA = "go_carriera", "Go Carriera"
+        IMPORT = "import", "Importacao"
+        API = "api", "API"
+        AI = "ai", "IA"
+        SYSTEM = "system", "Sistema"
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True, blank=True, related_name="data_source_logs")
+    source_type = models.CharField(max_length=30, choices=SourceType.choices)
+    source_name = models.CharField(max_length=120, blank=True)
+    reference_id = models.CharField(max_length=120, blank=True)
+    confidence_score = models.FloatField(default=50)
+    payload = models.JSONField(default=dict, blank=True)
+    collected_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "data_source_logs"
+        ordering = ["-collected_at", "-id"]
+
+
+class AthleteSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="athlete_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    data_confidence_score = models.FloatField(default=50)
+    identity_payload = models.JSONField(default=dict, blank=True)
+    career_payload = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "athlete_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
+
+
+class PerformanceSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="performance_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    related_report = models.ForeignKey(LivePlayerEvaluation, on_delete=models.SET_NULL, null=True, blank=True, related_name="performance_snapshots")
+    performance_score = models.FloatField(default=0)
+    output_score = models.FloatField(default=0)
+    positional_fit_score = models.FloatField(default=0)
+    consistency_score = models.FloatField(default=0)
+    context_score = models.FloatField(default=0)
+    data_confidence_score = models.FloatField(default=50)
+    metrics_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "performance_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
+
+
+class BehaviorSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="behavior_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    behavior_score = models.FloatField(default=0)
+    readiness_score = models.FloatField(default=0)
+    habit_score = models.FloatField(default=0)
+    emotional_stability_score = models.FloatField(default=0)
+    professionalism_score = models.FloatField(default=0)
+    adherence_score = models.FloatField(default=0)
+    consistency_score = models.FloatField(default=0)
+    injury_recovery_behavior_score = models.FloatField(default=0)
+    engagement_score = models.FloatField(default=0)
+    data_confidence_score = models.FloatField(default=50)
+    metrics_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "behavior_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
+
+
+class MarketSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="market_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    market_score = models.FloatField(default=0)
+    current_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    projected_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    contract_timing_score = models.FloatField(default=0)
+    league_context_score = models.FloatField(default=0)
+    club_reputation_score = models.FloatField(default=0)
+    data_confidence_score = models.FloatField(default=50)
+    metrics_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "market_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
+
+
+class MarketingSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="marketing_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    marketing_score = models.FloatField(default=0)
+    media_attention_score = models.FloatField(default=0)
+    exposure_performance_ratio = models.FloatField(default=0)
+    narrative_sentiment_score = models.FloatField(default=0)
+    authority_score = models.FloatField(default=0)
+    growth_momentum_score = models.FloatField(default=0)
+    buzz_stability_score = models.FloatField(default=0)
+    data_confidence_score = models.FloatField(default=50)
+    metrics_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "marketing_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
+
+
+class ScoreSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="score_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    performance_score = models.FloatField(default=0)
+    market_score = models.FloatField(default=0)
+    marketing_score = models.FloatField(default=0)
+    behavior_score = models.FloatField(default=0)
+    potential_score = models.FloatField(default=0)
+    final_score = models.FloatField(default=0)
+    adjustment = models.FloatField(default=0)
+    classification = models.CharField(max_length=120, blank=True)
+    traffic_light = models.CharField(max_length=40, blank=True)
+    data_confidence_score = models.FloatField(default=50)
+    scores_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "score_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
+
+
+class ProjectionSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="projection_snapshots")
+    snapshot_date = models.DateField()
+    source = models.CharField(max_length=30, default=DataSourceLog.SourceType.SYSTEM)
+    potential_score = models.FloatField(default=0)
+    projected_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    growth_velocity_score = models.FloatField(default=0)
+    stagnation_risk_score = models.FloatField(default=0)
+    adaptation_probability_score = models.FloatField(default=0)
+    opportunity_window = models.CharField(max_length=80, blank=True)
+    data_confidence_score = models.FloatField(default=50)
+    projection_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "projection_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date", "source")
 
 
 class CareerIntelligenceCase(models.Model):

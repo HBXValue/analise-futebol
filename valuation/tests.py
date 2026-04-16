@@ -15,26 +15,35 @@ from catalog.models import Country, Division
 from clubs.models import Club
 from valuation.models import (
     AnalystNote,
+    AthleteIdentity,
+    AthleteSnapshot,
     AthleteAIInsight,
     BehaviorMetrics,
+    BehaviorSnapshot,
     CareerIntelligenceCase,
     CareerPrognosis,
     ClubCompetitiveContext,
     CoachProfile,
     CompetitiveDiagnosis,
     DevelopmentPlan,
+    DataSourceLog,
     HBXValueProfile,
     IndividualDevelopmentPlan,
     LiveAnalysisEvent,
     LiveAnalysisSession,
     LivePlayerEvaluation,
     MarketMetrics,
+    MarketSnapshot,
     MarketingMetrics,
+    MarketingSnapshot,
     OnBallEvent,
     PerformanceMetrics,
+    PerformanceSnapshot,
     Player,
     PlayerHistory,
+    ProjectionSnapshot,
     ProgressTracking,
+    ScoreSnapshot,
     User,
 )
 from valuation.career_services import case_completion
@@ -132,6 +141,29 @@ class ValuationServiceTests(TestCase):
         insights = build_growth_insights(self.player, "pt", "12")
         self.assertIn("main_driver", insights)
         self.assertGreaterEqual(insights["projected_growth_pct"], 0)
+
+    def test_history_snapshot_creates_hbx_360_snapshots(self):
+        save_player_history_snapshot(self.player, date(2026, 3, 1))
+
+        self.assertTrue(AthleteIdentity.objects.filter(player=self.player).exists())
+        self.assertTrue(AthleteSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(PerformanceSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(BehaviorSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(MarketSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(MarketingSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(ScoreSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(ProjectionSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).exists())
+        self.assertTrue(DataSourceLog.objects.filter(player=self.player, source_type=DataSourceLog.SourceType.SYSTEM).exists())
+
+    def test_hbx_360_snapshot_updates_same_day_and_source(self):
+        save_player_history_snapshot(self.player, date(2026, 3, 1))
+        self.player.current_value = Decimal("6500000.00")
+        self.player.save()
+        save_player_history_snapshot(self.player, date(2026, 3, 1))
+
+        self.assertEqual(ScoreSnapshot.objects.filter(player=self.player, snapshot_date=date(2026, 3, 1)).count(), 1)
+        market_snapshot = MarketSnapshot.objects.get(player=self.player, snapshot_date=date(2026, 3, 1))
+        self.assertEqual(market_snapshot.current_value, Decimal("6500000.00"))
 
     def test_manual_snapshot_can_override_values(self):
         snapshot = save_manual_history_snapshot(
