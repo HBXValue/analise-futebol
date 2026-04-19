@@ -103,11 +103,11 @@
             <div class="live-statline" style="margin-top: 12px;">
                 <div class="stat-card">
                     <span>Status</span>
-                    <strong>{% if selected_hbx_profile %}Integrado ao dashboard{% else %}Aguardando coleta{% endif %}</strong>
+                    <strong>{% if market_intelligence_payload %}{{ market_intelligence_payload.workflow_summary.status }}{% else %}Aguardando coleta{% endif %}</strong>
                 </div>
                 <div class="stat-card">
                     <span>Fontes ativas</span>
-                    <strong>{% if selected_hbx_profile and selected_hbx_profile.delivery_payload.dashboard.source_count %}{{ selected_hbx_profile.delivery_payload.dashboard.source_count }}{% else %}4{% endif %}</strong>
+                    <strong>{% if market_intelligence_payload %}{{ market_intelligence_payload.workflow_summary.source_count }}{% else %}0{% endif %}</strong>
                 </div>
             </div>
         </div>
@@ -116,19 +116,29 @@
     <div class="grid stats-grid">
         <div class="stat-card">
             <span>Market Perception Index</span>
-            <strong id="mpi-value">{{ selected_metrics.market_perception_index|default:0 }}</strong>
+            <strong id="mpi-value">{{ market_intelligence_payload.metrics.market_perception_index|default:0 }}</strong>
         </div>
         <div class="stat-card">
             <span>Performance Impact Score</span>
-            <strong id="pis-value">{{ selected_metrics.performance_impact_score|default:0 }}</strong>
+            <strong id="pis-value">{{ market_intelligence_payload.metrics.performance_impact_score|default:0 }}</strong>
         </div>
         <div class="stat-card">
             <span>Impact Correlation Score</span>
-            <strong id="ics-value">{{ selected_metrics.impact_correlation_score|default:0 }}</strong>
+            <strong id="ics-value">{{ market_intelligence_payload.metrics.impact_correlation_score|default:0 }}</strong>
         </div>
         <div class="stat-card">
             <span>Tendencia</span>
-            <strong id="trend-value">{{ selected_metrics.trend_label|default:"Estavel" }}</strong>
+            <strong id="trend-value">{{ market_intelligence_payload.metrics.trend_label|default:"Estavel" }}</strong>
+        </div>
+        <div class="stat-card">
+            <span>Contexto do atleta</span>
+            <strong>{% if market_intelligence_payload %}{{ market_intelligence_payload.identity.name }}{% else %}-{% endif %}</strong>
+            <div>{% if market_intelligence_payload %}{{ market_intelligence_payload.identity.position }} | {{ market_intelligence_payload.identity.league }} | {{ market_intelligence_payload.identity.club }}{% endif %}</div>
+        </div>
+        <div class="stat-card">
+            <span>Mercado atual</span>
+            <strong>{% if market_intelligence_payload %}{{ market_intelligence_payload.market_summary.market_stage|default:"-" }}{% else %}-{% endif %}</strong>
+            <div>{% if market_intelligence_payload %}Interesse {{ market_intelligence_payload.market_summary.club_interest|floatformat:0 }} | Liga {{ market_intelligence_payload.market_summary.league_score|floatformat:0 }}{% endif %}</div>
         </div>
     </div>
 
@@ -414,13 +424,13 @@
                 <div class="progress-stack" style="margin-top: 18px;">
                     <div class="progress-card">
                         <div class="progress-label">Narrativa dominante</div>
-                        <div class="progress-values" id="narrative-summary">{{ selected_metrics.narrative_summary|default:"O atleta sustenta leitura positiva, embora ainda sem pico maximo de valorizacao." }}</div>
+                        <div class="progress-values" id="narrative-summary">{{ market_intelligence_payload.metrics.narrative_summary|default:"O atleta sustenta leitura positiva, embora ainda sem pico maximo de valorizacao." }}</div>
                     </div>
                     <div class="progress-card">
                         <div class="progress-label">Palavras-chave</div>
                         <div class="progress-values" id="narrative-keywords">
-                            {% if selected_metrics and selected_metrics.narrative_keywords %}
-                                {{ selected_metrics.narrative_keywords|join:", " }}
+                            {% if market_intelligence_payload and market_intelligence_payload.metrics.narrative_keywords %}
+                                {{ market_intelligence_payload.metrics.narrative_keywords|join:", " }}
                             {% else %}
                                 promissor, consistente, em ascensao
                             {% endif %}
@@ -435,18 +445,18 @@
                 <div class="live-statline" style="margin-top: 0;">
                     <div class="stat-card">
                         <span>Classificacao</span>
-                        <strong id="narrative-label">{{ selected_metrics.narrative_label|default:"Consistente" }}</strong>
+                        <strong id="narrative-label">{{ market_intelligence_payload.metrics.narrative_label|default:"Consistente" }}</strong>
                     </div>
                     <div class="stat-card">
                         <span>Mercado hoje</span>
-                        <strong id="market-label">{{ selected_metrics.market_label|default:"Percepcao moderada" }}</strong>
+                        <strong id="market-label">{{ market_intelligence_payload.metrics.market_label|default:"Percepcao moderada" }}</strong>
                     </div>
                 </div>
                 <div class="progress-stack" id="dashboard-summary">
                     <div class="progress-card">
                         <div class="progress-label">Status</div>
                         <div class="progress-values" id="dashboard-status-text">
-                            {% if selected_metrics %}
+                            {% if market_intelligence_payload %}
                                 Coleta pronta para alimentar o dashboard individual do atleta.
                             {% else %}
                                 Preencha a coleta para consolidar os dados do atleta no dashboard.

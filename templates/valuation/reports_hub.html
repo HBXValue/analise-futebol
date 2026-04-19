@@ -28,7 +28,7 @@
             <p>Transforme a leitura longitudinal do atleta em material objetivo para reuniao, tomada de decisao e entrega comercial.</p>
         </section>
 
-        {% if selected_player and longitudinal_bi %}
+        {% if selected_player and reports_executive_payload %}
         <section class="panel" style="margin-top: 20px;">
             <h2>Resumo executivo do atleta</h2>
             <form method="get">
@@ -64,8 +64,8 @@
                 <div class="actions">
                     <button class="button button-primary" type="submit">Atualizar resumo</button>
                     <a class="button button-secondary" href="{% url 'player-report' selected_player.id %}?audience={{ selected_audience }}&lang={{ lang }}">Exportar PDF do público</a>
-                    {% if selected_case %}
-                        <a class="button button-secondary" href="{% url 'career-case-report-pdf' selected_case.id %}?lang={{ lang }}">PDF de inteligencia</a>
+                    {% if reports_executive_payload.career_case.exists %}
+                        <a class="button button-secondary" href="{% url 'career-case-report-pdf' reports_executive_payload.career_case.id %}?lang={{ lang }}">PDF de inteligencia</a>
                     {% endif %}
                 </div>
             </form>
@@ -73,28 +73,33 @@
             <div class="grid stats-grid" style="margin-top: 20px;">
                 <article class="stat-card">
                     <span>Atleta</span>
-                    <strong>{{ selected_player.name }}</strong>
-                    <div>{{ selected_player.position }}</div>
+                    <strong>{{ reports_executive_payload.identity.name }}</strong>
+                    <div>{{ reports_executive_payload.identity.position }} | {{ reports_executive_payload.identity.league }}</div>
                 </article>
                 <article class="stat-card">
                     <span>Status executivo</span>
-                    <strong>{{ longitudinal_bi.status_label }}</strong>
+                    <strong>{{ reports_executive_payload.status_summary.executive_status }}</strong>
                     <div>Delta score: {{ longitudinal_bi.delta.valuation_score|floatformat:1 }}</div>
                 </article>
                 <article class="stat-card">
                     <span>Valor no periodo</span>
-                    <strong>{{ longitudinal_bi.value_delta_pct|floatformat:1 }}%</strong>
+                    <strong>{{ reports_executive_payload.value_summary.value_delta_pct|floatformat:1 }}%</strong>
                     <div>Hoje vs {{ compare_window }} dias</div>
                 </article>
                 <article class="stat-card">
                     <span>Melhor resposta</span>
-                    <strong>{{ longitudinal_bi.best_pillar_label }}</strong>
+                    <strong>{{ reports_executive_payload.status_summary.best_pillar_label }}</strong>
                     <div>Pilar com melhor delta</div>
                 </article>
                 <article class="stat-card">
                     <span>Ponto de atencao</span>
-                    <strong>{{ longitudinal_bi.worst_pillar_label }}</strong>
+                    <strong>{{ reports_executive_payload.status_summary.worst_pillar_label }}</strong>
                     <div>Pilar mais pressionado</div>
+                </article>
+                <article class="stat-card">
+                    <span>HBX Value</span>
+                    <strong>{% if reports_executive_payload.hbx_value_summary.exists %}{{ reports_executive_payload.hbx_value_summary.market_perception_index|floatformat:1 }}{% else %}-{% endif %}</strong>
+                    <div>{% if reports_executive_payload.hbx_value_summary.exists %}{{ reports_executive_payload.hbx_value_summary.trend_label }} | {{ reports_executive_payload.hbx_value_summary.narrative_label }}{% else %}Sem perfil HBX salvo{% endif %}</div>
                 </article>
             </div>
 
@@ -108,13 +113,13 @@
                     <div class="progress-stack">
                         <article class="progress-card">
                             <div class="progress-meta">
-                                <div class="progress-label">Proxima acao recomendada</div>
-                                <div class="progress-values">
-                                    <span>{{ longitudinal_bi.recommended_action }}</span>
+                                    <div class="progress-label">Proxima acao recomendada</div>
+                                    <div class="progress-values">
+                                        <span>{{ reports_executive_payload.status_summary.main_recommendation }}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        </article>
-                        {% for alert in longitudinal_bi.alerts %}
+                            </article>
+                        {% for alert in reports_executive_payload.status_summary.alerts %}
                             <article class="progress-card">
                                 <div class="progress-meta">
                                     <div class="progress-label">Alerta automatico</div>
@@ -128,7 +133,7 @@
                 </article>
             </section>
 
-            {% if audience_packages %}
+            {% if reports_executive_payload.report_context %}
             <section class="panel" style="margin-top: 20px;">
                 <h2>Report por publico</h2>
                 <div class="grid stats-grid" style="margin-top: 16px;">
@@ -142,7 +147,7 @@
                 </div>
 
                 {% if selected_audience == 'athlete' %}
-                    {% with package=audience_packages.packages.athlete %}
+                    {% with package=reports_executive_payload.report_context.packages.athlete %}
                         <div class="progress-stack" style="margin-top: 18px;">
                             <article class="progress-card">
                                 <div class="progress-meta">
@@ -167,7 +172,7 @@
                         </div>
                     {% endwith %}
                 {% elif selected_audience == 'agent' %}
-                    {% with package=audience_packages.packages.agent %}
+                    {% with package=reports_executive_payload.report_context.packages.agent %}
                         <div class="progress-stack" style="margin-top: 18px;">
                             <article class="progress-card">
                                 <div class="progress-meta">
@@ -192,7 +197,7 @@
                         </div>
                     {% endwith %}
                 {% elif selected_audience == 'club' %}
-                    {% with package=audience_packages.packages.club %}
+                    {% with package=reports_executive_payload.report_context.packages.club %}
                         <div class="progress-stack" style="margin-top: 18px;">
                             <article class="progress-card">
                                 <div class="progress-meta">
@@ -217,7 +222,7 @@
                         </div>
                     {% endwith %}
                 {% else %}
-                    {% with package=audience_packages.packages.consultancy %}
+                    {% with package=reports_executive_payload.report_context.packages.consultancy %}
                         <div class="progress-stack" style="margin-top: 18px;">
                             <article class="progress-card">
                                 <div class="progress-meta">
@@ -248,7 +253,7 @@
             <section class="panel" style="margin-top: 20px;">
                 <h2>Bloco para relatorio</h2>
                 <div class="progress-stack">
-                    {% for insight in longitudinal_bi.insights %}
+                    {% for insight in reports_executive_payload.status_summary.insights %}
                         <article class="progress-card">
                             <div class="progress-meta">
                                 <div class="progress-label">Insight</div>

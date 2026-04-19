@@ -44,7 +44,7 @@ from valuation.models import (
     CareerPrognosis,
 )
 from valuation.i18n import LANGUAGES, get_language, get_translations, tr
-from valuation.services import sync_integrated_player_modules
+from valuation.services import build_performance_intelligence_payload, sync_integrated_player_modules
 from valuation.ui_context import build_global_player_context
 
 
@@ -65,7 +65,14 @@ def _case_queryset(user):
 def career_case_list_view(request):
     lang = get_language(request)
     current_user = get_current_user(request)
-    players = list(Player.objects.filter(user=current_user).select_related("division_reference__country", "club_reference"))
+    players = list(
+        Player.objects.filter(user=current_user).select_related(
+            "division_reference__country",
+            "club_reference",
+            "athlete360_core",
+            "performance_aggregate",
+        )
+    )
     for case_player in players:
         sync_integrated_player_modules(case_player)
     cases = _case_queryset(current_user)
@@ -76,11 +83,17 @@ def career_case_list_view(request):
             selected_player = next((player for player in players if player.id == int(selected_player_id)), None)
         except (TypeError, ValueError):
             selected_player = None
+    performance_intelligence_payload = (
+        build_performance_intelligence_payload(selected_player, lang, compare_window_days=90)
+        if selected_player
+        else None
+    )
     context = {
         "current_user": current_user,
         "cases": cases,
         "players": players,
         "selected_player": selected_player,
+        "performance_intelligence_payload": performance_intelligence_payload,
         "ai_dashboard_insight": get_cached_ai_dashboard_insight(selected_player, lang, 90, scope="performance") if selected_player else None,
         "case_rows": [{"case": case, "step_label": get_career_step_label(case.current_step, lang)} for case in cases],
         "countries": list(Country.objects.filter(is_active=True).order_by("name")),

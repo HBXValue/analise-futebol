@@ -144,8 +144,10 @@
 
                 <div class="panel" style="margin-bottom: 24px; padding: 16px 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button type="button" class="button button-secondary athlete-tab-button active" data-athlete-tab-target="profile">Perfil</button>
+                        <button type="button" class="button button-secondary athlete-tab-button active" data-athlete-tab-target="overview">Overview</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="profile">Perfil</button>
                         <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="career">Carreira</button>
+                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="team-context">Team Context</button>
                         <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="performance">Performance</button>
                         <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="market">Market</button>
                         <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="marketing">Marketing</button>
@@ -156,6 +158,96 @@
                         <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="timeline">Timeline</button>
                     </div>
                 </div>
+
+                <section data-athlete-tab="overview">
+                    <h2 class="section-title">Overview</h2>
+                    {% if player and athlete360_overview_payload %}
+                    <div class="panel" style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, rgba(0, 224, 184, 0.08), rgba(255,255,255,0.03)); border: 1px solid rgba(0, 224, 184, 0.16);">
+                        <p style="margin-top: 0; color: var(--muted);">Master executive summary do atleta. Esta camada junta identidade, contexto competitivo, comportamento, comparação, projeção e oportunidade em uma leitura única.</p>
+                        <div class="live-statline" style="margin-top: 0;">
+                            <div class="stat-card">
+                                <span>HBX Score</span>
+                                <strong>{{ athlete360_overview_payload.score_summary.final_score }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Valor atual</span>
+                                <strong>EUR {{ athlete360_overview_payload.value_summary.current_value|floatformat:2 }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Valor projetado</span>
+                                <strong>EUR {{ athlete360_overview_payload.value_summary.projected_value|floatformat:2 }}</strong>
+                            </div>
+                            <div class="stat-card">
+                                <span>Growth</span>
+                                <strong>{{ athlete360_overview_payload.value_summary.growth_rate|floatformat:1 }}%</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel" style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <h3 class="section-title" style="margin-top: 0; font-size: 1rem;">Athlete360 Executive Summary</h3>
+                        <div class="form-grid">
+                            <div class="field-group"><label>Atleta</label><div class="field-input" style="display:flex; align-items:center;">{{ athlete360_overview_payload.identity.name }}</div></div>
+                            <div class="field-group"><label>Contexto atual</label><div class="field-input" style="display:flex; align-items:center;">{{ athlete360_overview_payload.identity.club|default:"-" }} | {{ athlete360_overview_payload.identity.league|default:"-" }}</div></div>
+                            <div class="field-group"><label>Status competitivo</label><div class="field-input" style="display:flex; align-items:center;">{{ athlete360_overview_payload.comparative_summary.status_label }}</div></div>
+                            <div class="field-group"><label>Recomendação principal</label><div class="field-input" style="display:flex; align-items:center;">{{ athlete360_overview_payload.main_recommendation }}</div></div>
+                            <div class="field-group"><label>Janela</label><div class="field-input" style="display:flex; align-items:center;">{{ athlete360_overview_payload.opportunity_summary.window_status }}</div></div>
+                            <div class="field-group"><label>Movimento sugerido</label><div class="field-input" style="display:flex; align-items:center;">{{ athlete360_overview_payload.opportunity_summary.recommended_move }}</div></div>
+                        </div>
+                    </div>
+
+                    <div class="progress-stack" style="margin-bottom: 24px;">
+                        <article class="progress-card">
+                            <div class="progress-meta">
+                                <div class="progress-label">Team context oficial</div>
+                                <div class="progress-values">
+                                    <span>Coach {{ athlete360_overview_payload.team_context.coach_name|default:"-" }}</span>
+                                    <span>Formação {{ athlete360_overview_payload.team_context.primary_formation|default:"-" }}</span>
+                                    <span>Papel {{ athlete360_overview_payload.team_context.tactical_role|default:"-" }}</span>
+                                    <span>Titularidade {{ athlete360_overview_payload.team_context.starter_probability|floatformat:0 }}%</span>
+                                </div>
+                            </div>
+                        </article>
+                        <article class="progress-card">
+                            <div class="progress-meta">
+                                <div class="progress-label">Behavior and growth</div>
+                                <div class="progress-values">
+                                    <span>{{ athlete360_overview_payload.behavior_summary.status }}</span>
+                                    <span>{{ athlete360_overview_payload.behavior_summary.trend }}</span>
+                                    <span>Readiness {{ athlete360_overview_payload.behavior_summary.readiness|floatformat:1 }}</span>
+                                    <span>Habits {{ athlete360_overview_payload.behavior_summary.habits|floatformat:1 }}</span>
+                                </div>
+                            </div>
+                        </article>
+                        <article class="progress-card">
+                            <div class="progress-meta">
+                                <div class="progress-label">Comparative, projection and opportunity</div>
+                                <div class="progress-values">
+                                    <span>Delta contextual {{ athlete360_overview_payload.comparative_summary.contextual_delta|floatformat:1 }}</span>
+                                    <span>Shortlist {{ athlete360_overview_payload.comparative_summary.shortlist_size }}</span>
+                                    <span>{{ athlete360_overview_payload.projection_summary.timing_label }}</span>
+                                    <span>{{ athlete360_overview_payload.projection_summary.projected_growth_pct|floatformat:1 }}% esperado</span>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                    {% endif %}
+                    <div class="panel" style="margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <p style="margin-top: 0; color: var(--muted);">Leitura consolidada do Athlete360Core. Esta aba existe para reduzir repeticao de contexto entre os modulos.</p>
+                        <div class="form-grid">
+                            <div class="field-group"><label>Nome mestre</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.full_name }}{% else %}{{ player.name|default:"-" }}{% endif %}</div></div>
+                            <div class="field-group"><label>Posicao principal</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.primary_position|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Clube atual</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.current_club|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Liga atual</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.current_league|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Categoria</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.current_category|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Status</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.squad_status|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Contrato</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core and athlete360_core.contract_months_remaining != None %}{{ athlete360_core.contract_months_remaining }} meses{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Coach atual</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.current_coach|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Formacao principal</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.primary_formation|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Papel tatico</label><div class="field-input" style="display:flex; align-items:center;">{% if athlete360_core %}{{ athlete360_core.tactical_role|default:"-" }}{% else %}-{% endif %}</div></div>
+                        </div>
+                    </div>
+                </section>
 
                 <section data-athlete-tab="profile">
                 <h2 class="section-title">{{ t.player_profile }}</h2>
@@ -484,6 +576,26 @@
                             Salve o atleta primeiro para liberar o historico de carreira.
                         </div>
                     {% endif %}
+                </section>
+
+                <section data-athlete-tab="team-context" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 30px;">Team Context</h2>
+                    <p style="color: var(--muted); margin-top: 0;">Ambiente tatico oficial do atleta. Esta aba prepara a compatibilidade com Base44 e reduz espalhamento de contexto entre Match Analysis, Performance e Opportunity.</p>
+                    <div class="panel" style="padding: 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);">
+                        <div class="form-grid">
+                            <div class="field-group"><label>Clube</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.club_name|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Categoria da equipe</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.team_category|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Coach</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.coach_name|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Formacao principal</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.primary_formation|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Formacao secundaria</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.secondary_formation|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Playing style</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.playing_style|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Squad status</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.squad_status|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Tactical role</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.tactical_role|default:"-" }}{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Coach trust</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.coach_trust_level|floatformat:1 }}/100{% else %}-{% endif %}</div></div>
+                            <div class="field-group"><label>Starter probability</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.starter_probability|floatformat:1 }}%{% else %}-{% endif %}</div></div>
+                            <div class="field-group" style="grid-column: 1 / -1;"><label>System fit notes</label><div class="field-input" style="display:flex; align-items:center;">{% if team_context_current %}{{ team_context_current.system_fit_notes|default:"-" }}{% else %}-{% endif %}</div></div>
+                        </div>
+                    </div>
                 </section>
 
                 <section data-athlete-tab="performance" style="display: none;">
@@ -1124,7 +1236,7 @@
         button.addEventListener("click", () => activateTab(button.dataset.athleteTabTarget));
     });
 
-    activateTab("profile");
+    activateTab("overview");
 })();
 
 (() => {

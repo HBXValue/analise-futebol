@@ -135,6 +135,47 @@
         </div>
     </div>
 
+    {% if selected_player and match_analysis_payload %}
+    <section class="panel" style="margin-top: 18px;">
+        <h2>Athlete360 Match Context</h2>
+        <div class="progress-stack">
+            <article class="progress-card">
+                <div class="progress-meta">
+                    <div class="progress-label">Contexto consolidado do atleta</div>
+                    <div class="progress-values">
+                        <span><strong>{{ match_analysis_payload.identity.name }}</strong> · {{ match_analysis_payload.identity.position|default:"-" }}</span>
+                        <span>{{ match_analysis_payload.identity.club|default:"-" }} · {{ match_analysis_payload.identity.league|default:"-" }} · {{ match_analysis_payload.identity.country|default:"-" }}</span>
+                        <span>HBX Score: <strong>{{ match_analysis_payload.score_summary.final_score }}</strong></span>
+                        <span>Recomendação: {{ match_analysis_payload.integrated_status.main_recommendation }}</span>
+                    </div>
+                </div>
+            </article>
+            <article class="progress-card">
+                <div class="progress-meta">
+                    <div class="progress-label">Team Context oficial</div>
+                    <div class="progress-values">
+                        <span>Treinador: <strong>{{ match_analysis_payload.team_context.coach_name|default:"-" }}</strong></span>
+                        <span>Formação: {{ match_analysis_payload.team_context.primary_formation|default:"-" }}{% if match_analysis_payload.team_context.secondary_formation %} · {{ match_analysis_payload.team_context.secondary_formation }}{% endif %}</span>
+                        <span>Função tática: {{ match_analysis_payload.team_context.tactical_role|default:"-" }}</span>
+                        <span>Status no elenco: {{ match_analysis_payload.team_context.squad_status|default:"-" }}</span>
+                    </div>
+                </div>
+            </article>
+            <article class="progress-card">
+                <div class="progress-meta">
+                    <div class="progress-label">Resumo para análise da partida</div>
+                    <div class="progress-values">
+                        <span>xG {{ match_analysis_payload.performance_summary.xg|floatformat:2 }} · xA {{ match_analysis_payload.performance_summary.xa|floatformat:2 }}</span>
+                        <span>Passe {{ match_analysis_payload.performance_summary.passing|floatformat:1 }} · Drible {{ match_analysis_payload.performance_summary.dribbling|floatformat:1 }} · Desarme {{ match_analysis_payload.performance_summary.tackling|floatformat:1 }}</span>
+                        <span>Probabilidade de titularidade: {{ match_analysis_payload.team_context.starter_probability|floatformat:0 }}%</span>
+                        <span>{% if match_analysis_payload.integrated_status.latest_live_summary %}Último resumo: {{ match_analysis_payload.integrated_status.latest_live_summary }}{% else %}Nenhum resumo recente salvo ainda.{% endif %}</span>
+                    </div>
+                </div>
+            </article>
+        </div>
+    </section>
+    {% endif %}
+
     <form method="post" action="{% url 'live-analysis-session' %}" id="live-evaluation-form">
         {% csrf_token %}
         <input type="hidden" name="report_id" id="report-id" value="{% if selected_report %}{{ selected_report.id }}{% endif %}">

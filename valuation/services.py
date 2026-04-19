@@ -3,18 +3,20 @@ import io
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from email.utils import parsedate_to_datetime
+from types import SimpleNamespace
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 from django.utils import timezone
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 
-from valuation.career_services import case_completion
+from valuation.career_services import case_completion, get_career_step_label
 from valuation.constants import normalize_position_value
 from valuation.i18n import tr
 from catalog.models import Country, Division
@@ -22,11 +24,13 @@ from clubs.models import Club
 from valuation.models import (
     AnalystNote,
     AthleteContract,
+    Athlete360Core,
     AthleteTransfer,
     AthleteIdentity,
     AthleteSnapshot,
     AthleteCareerEntry,
     BehaviorMetrics,
+    BehavioralAggregate,
     BehaviorSnapshot,
     CareerIntelligenceCase,
     DataSourceLog,
@@ -35,18 +39,25 @@ from valuation.models import (
     LiveAnalysisEvent,
     LiveAnalysisSession,
     MarketMetrics,
+    MarketAggregate,
     MarketSnapshot,
     MarketingMetrics,
+    MarketingAggregate,
     MarketingSnapshot,
     GoCarrieraCheckIn,
+    OpportunityAggregate,
     OnBallEvent,
     PerformanceMetrics,
+    PerformanceAggregate,
     PerformanceSnapshot,
     Player,
     PlayerHistory,
+    ProjectionAggregate,
     ProjectionSnapshot,
     ProgressTracking,
+    ScenarioLab,
     ScoreSnapshot,
+    TeamContextSnapshot,
 )
 
 
@@ -230,6 +241,54 @@ def _coerce_behavioral_score(value):
     return clamp(numeric)
 
 
+def _safe_related(instance, attr_name, fallback=None):
+    try:
+        return getattr(instance, attr_name)
+    except (AttributeError, ObjectDoesNotExist):
+        return fallback
+
+
+def _empty_metrics():
+    return SimpleNamespace(
+        xg=0,
+        xa=0,
+        passes_pct=0,
+        dribbles_pct=0,
+        tackles_pct=0,
+        high_intensity_distance=0,
+        final_third_recoveries=0,
+        annual_growth=0,
+        club_interest=0,
+        league_score=0,
+        age_factor=0,
+        club_reputation=0,
+        instagram_handle="",
+        instagram_followers=0,
+        instagram_engagement=0,
+        tiktok_handle="",
+        tiktok_followers=0,
+        tiktok_engagement=0,
+        x_handle="",
+        x_followers=0,
+        x_engagement=0,
+        google_news_query="",
+        youtube_query="",
+        youtube_subscribers=0,
+        youtube_avg_views=0,
+        followers=0,
+        engagement=0,
+        media_mentions=0,
+        sponsorships=0,
+        sentiment_score=0,
+        conscientiousness=0,
+        adaptability=0,
+        resilience=0,
+        deliberate_practice=0,
+        executive_function=0,
+        leadership=0,
+    )
+
+
 def _weighted_average_dict(items):
     total_weight = sum(weight for _, weight in items.values())
     if total_weight <= 0:
@@ -274,25 +333,25 @@ def _traffic_light_label(score):
 def _derived_training_environment_score(player):
     if float(player.training_environment_score or 0) > 0:
         return round(clamp(player.training_environment_score), 2)
-    market = player.market_metrics
+    market = _safe_related(player, "market_metrics", _empty_metrics())
     return round((clamp(market.league_score) * 0.45) + (clamp(market.club_reputation) * 0.55), 2)
 
 
 def _derived_trajectory_score(player):
     if float(player.trajectory_score or 0) > 0:
         return round(clamp(player.trajectory_score), 2)
-    market = player.market_metrics
-    performance = player.performance_metrics
+    market = _safe_related(player, "market_metrics", _empty_metrics())
+    performance = _safe_related(player, "performance_metrics", _empty_metrics())
     performance_signal = normalize_range((float(performance.xg or 0) + float(performance.xa or 0)), 0, 1.2)
     growth_signal = normalize(market.annual_growth, "annual_growth")
     return round((growth_signal * 0.55) + (clamp(market.age_factor) * 0.20) + (performance_signal * 0.25), 2)
 
 
 def _athlete_input_from_player(player):
-    performance = player.performance_metrics
-    market = player.market_metrics
-    marketing = player.marketing_metrics
-    behavior = player.behavior_metrics
+    performance = _safe_related(player, "performance_metrics", _empty_metrics())
+    market = _safe_related(player, "market_metrics", _empty_metrics())
+    marketing = _safe_related(player, "marketing_metrics", _empty_metrics())
+    behavior = _safe_related(player, "behavior_metrics", _empty_metrics())
     return AthleteInput(
         position_group=_position_group_from_player(player),
         age=player.age,
@@ -504,6 +563,18 @@ def _source_confidence(source):
 def _json_safe(value):
     if isinstance(value, Decimal):
         return float(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if hasattr(value, "_meta"):
+        payload = {
+            "id": getattr(value, "pk", None),
+            "model": value._meta.label_lower,
+            "label": str(value),
+        }
+        for attr in ("name", "public_name", "from_club", "to_club", "club_origin", "league_level"):
+            if hasattr(value, attr):
+                payload[attr] = _json_safe(getattr(value, attr))
+        return payload
     if isinstance(value, dict):
         return {key: _json_safe(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -521,15 +592,360 @@ def _upsert_snapshot(model, player, snapshot_date, source, defaults):
     return snapshot
 
 
+def _normalize_source_category(source):
+    source_map = {
+        DataSourceLog.SourceType.MANUAL: DataSourceLog.SourceType.INTERNAL_MANUAL,
+        DataSourceLog.SourceType.INTERNAL_MANUAL: DataSourceLog.SourceType.INTERNAL_MANUAL,
+        DataSourceLog.SourceType.MATCH_ANALYSIS: DataSourceLog.SourceType.MATCH_ANALYSIS,
+        DataSourceLog.SourceType.HBX_VALUE: DataSourceLog.SourceType.GENERATED_BY_HBX,
+        DataSourceLog.SourceType.GO_CARRIERA: DataSourceLog.SourceType.GO_CARRIERA,
+        DataSourceLog.SourceType.IMPORT: DataSourceLog.SourceType.IMPORTED_CSV,
+        DataSourceLog.SourceType.IMPORTED_CSV: DataSourceLog.SourceType.IMPORTED_CSV,
+        DataSourceLog.SourceType.BASE44_REGISTRY: DataSourceLog.SourceType.BASE44_REGISTRY,
+        DataSourceLog.SourceType.API: DataSourceLog.SourceType.BASE44_REGISTRY,
+        DataSourceLog.SourceType.AI: DataSourceLog.SourceType.AI_INTERPRETATION,
+        DataSourceLog.SourceType.AI_INTERPRETATION: DataSourceLog.SourceType.AI_INTERPRETATION,
+        DataSourceLog.SourceType.SYSTEM: DataSourceLog.SourceType.GENERATED_BY_HBX,
+        DataSourceLog.SourceType.GENERATED_BY_HBX: DataSourceLog.SourceType.GENERATED_BY_HBX,
+    }
+    return source_map.get(source, DataSourceLog.SourceType.GENERATED_BY_HBX)
+
+
+def _latest_team_context_payload(player):
+    latest_session = player.live_analysis_sessions.order_by("-observed_on", "-id").first()
+    latest_report = player.live_player_evaluations.order_by("-match_date", "-saved_at", "-id").first()
+    current_case = player.career_cases.order_by("-updated_at", "-id").first()
+    primary_formation = ""
+    secondary_formation = ""
+    coach_name = ""
+    tactical_role = ""
+    playing_style = ""
+    coach_trust_level = 0.0
+    starter_probability = 0.0
+    system_fit_notes = ""
+    if current_case:
+        coach_name = getattr(current_case, "coach_name", "") or ""
+        primary_formation = getattr(current_case, "preferred_formation", "") or ""
+        secondary_formation = getattr(current_case, "secondary_formation", "") or ""
+        tactical_role = getattr(current_case, "tactical_role", "") or ""
+        playing_style = getattr(current_case, "playing_style", "") or ""
+        coach_trust_level = float(getattr(current_case, "coach_trust_score", 0) or 0)
+        starter_probability = float(getattr(current_case, "starter_probability", 0) or 0)
+        system_fit_notes = getattr(current_case, "system_fit_notes", "") or ""
+    if latest_session:
+        tactical_role = tactical_role or latest_session.played_position
+        starter_probability = max(starter_probability, 75.0 if latest_session.starter_status == LiveAnalysisSession.StarterStatus.STARTER else 35.0)
+    if latest_report:
+        tactical_role = tactical_role or latest_report.position
+    return {
+        "club_name": player.club_reference.short_name if player.club_reference_id and player.club_reference.short_name else player.club_origin,
+        "team_category": player.category,
+        "coach_name": coach_name,
+        "primary_formation": primary_formation,
+        "secondary_formation": secondary_formation,
+        "playing_style": playing_style,
+        "squad_status": player.squad_status,
+        "tactical_role": tactical_role or player.position,
+        "system_fit_notes": system_fit_notes,
+        "coach_trust_level": round(clamp(coach_trust_level), 2),
+        "starter_probability": round(clamp(starter_probability), 2),
+    }
+
+
+def _build_hbx_score_summary(scores):
+    return {
+        "performance_score": round(scores["performance_score"], 2),
+        "market_score": round(scores["market_score"], 2),
+        "marketing_score": round(scores["marketing_score"], 2),
+        "behavior_score": round(scores["behavior_score"], 2),
+        "potential_score": round(scores["potential_score"], 2),
+        "final_score": round(scores["final_score"], 2),
+        "classification": scores["classification"],
+        "traffic_light": scores["traffic_light"],
+    }
+
+
+class Athlete360Orchestrator:
+    """
+    Consolidates scattered athlete data into a single, traceable Athlete 360 state.
+    This is the transition layer that keeps backward compatibility while removing
+    redundant per-module context assembly over time.
+    """
+
+    @classmethod
+    def sync(cls, player, snapshot_date=None, source=DataSourceLog.SourceType.SYSTEM):
+        snapshot_date = snapshot_date or timezone.localdate()
+        source_category = _normalize_source_category(source)
+        identity = ensure_athlete_identity(player)
+        scores = calculate_scores(player)
+        team_context_payload = _latest_team_context_payload(player)
+        profile_summary = _player_identity_payload(player, identity)
+        career_summary = _player_career_payload(player)
+        hbx_score_summary = _build_hbx_score_summary(scores)
+        longitudinal = longitudinal_bi_payload(player, "pt", 90)
+        comparative = build_comparative_intelligence(player, "pt", compare_window_days=90)
+        projection = build_projection_intelligence(player, "pt", period="12")
+        opportunity = build_opportunity_intelligence(player, "pt", period="12")
+        performance = _safe_related(player, "performance_metrics", _empty_metrics())
+        market = _safe_related(player, "market_metrics", _empty_metrics())
+        marketing = _safe_related(player, "marketing_metrics", _empty_metrics())
+        behavior = _safe_related(player, "behavior_metrics", _empty_metrics())
+
+        Athlete360Core.objects.update_or_create(
+            player=player,
+            defaults={
+                "player_uuid": identity.player_uuid,
+                "full_name": player.name,
+                "public_name": player.public_name,
+                "birth_date": player.birth_date,
+                "age": player.age,
+                "nationality": player.nationality,
+                "secondary_nationalities": identity.secondary_nationalities,
+                "primary_position": player.position,
+                "secondary_positions": player.secondary_positions,
+                "dominant_foot": player.dominant_foot,
+                "height_cm": player.height_cm,
+                "weight_kg": player.weight_kg,
+                "current_country": player.division_reference.country.name if player.division_reference_id else "",
+                "current_league": player.division_reference.short_name if player.division_reference_id and player.division_reference.short_name else player.league_level,
+                "current_club": player.club_reference.short_name if player.club_reference_id and player.club_reference.short_name else player.club_origin,
+                "current_category": player.category,
+                "squad_status": player.squad_status,
+                "contract_months_remaining": player.contract_months_remaining,
+                "current_value": player.current_value,
+                "current_coach": team_context_payload["coach_name"],
+                "primary_formation": team_context_payload["primary_formation"],
+                "tactical_role": team_context_payload["tactical_role"],
+                "team_context_summary": _json_safe(team_context_payload),
+                "source_summary": {
+                    "profile": source_category,
+                    "team_context": source_category,
+                    "aggregates": DataSourceLog.SourceType.GENERATED_BY_HBX,
+                },
+            },
+        )
+        TeamContextSnapshot.objects.update_or_create(
+            player=player,
+            snapshot_date=snapshot_date,
+            defaults={
+                "source_category": source_category,
+                **team_context_payload,
+                "summary_json": _json_safe(team_context_payload),
+            },
+        )
+        performance_summary = {
+            "xg": float(getattr(performance, "xg", 0) or 0),
+            "xa": float(getattr(performance, "xa", 0) or 0),
+            "passing": float(getattr(performance, "passes_pct", 0) or 0),
+            "dribbling": float(getattr(performance, "dribbles_pct", 0) or 0),
+            "tackling": float(getattr(performance, "tackles_pct", 0) or 0),
+            "high_intensity_distance": float(getattr(performance, "high_intensity_distance", 0) or 0),
+            "recoveries": float(getattr(performance, "final_third_recoveries", 0) or 0),
+            "match_analysis_summary": {
+                "reports_count": player.live_player_evaluations.count(),
+                "latest_match_date": player.live_player_evaluations.order_by("-match_date").values_list("match_date", flat=True).first().isoformat() if player.live_player_evaluations.exists() else "",
+            },
+            "trend_deltas": {
+                "performance_score": longitudinal["delta"]["performance_score"],
+                "valuation_score": longitudinal["delta"]["valuation_score"],
+            },
+        }
+        PerformanceAggregate.objects.update_or_create(
+            player=player,
+            defaults={
+                "source_category": source_category,
+                **performance_summary,
+            },
+        )
+        behavioral_source = DataSourceLog.SourceType.GO_CARRIERA if player.go_carriera_checkins.exists() else source_category
+        behavior_snapshot = player.behavior_snapshots.first()
+        behavioral_summary = {
+            "conscientiousness": float(getattr(behavior, "conscientiousness", 0) or 0),
+            "adaptability": float(getattr(behavior, "adaptability", 0) or 0),
+            "resilience": float(getattr(behavior, "resilience", 0) or 0),
+            "deliberate_practice": float(getattr(behavior, "deliberate_practice", 0) or 0),
+            "executive_function": float(getattr(behavior, "executive_function", 0) or 0),
+            "leadership": float(getattr(behavior, "leadership", 0) or 0),
+            "readiness": float(getattr(behavior_snapshot, "readiness_score", 0) or 0),
+            "habits": float(getattr(behavior_snapshot, "habit_score", 0) or 0),
+            "emotional_stability": float(getattr(behavior_snapshot, "emotional_stability_score", 0) or 0),
+            "injury_behavior": float(getattr(behavior_snapshot, "injury_recovery_behavior_score", 0) or 0),
+            "adherence": float(getattr(behavior_snapshot, "adherence_score", 0) or 0),
+            "consistency": float(getattr(behavior_snapshot, "consistency_score", 0) or 0),
+            "source_metadata": {
+                "manual": source_category,
+                "behavioral_stream": behavioral_source,
+            },
+        }
+        BehavioralAggregate.objects.update_or_create(
+            player=player,
+            defaults={
+                "source_category": behavioral_source,
+                **behavioral_summary,
+            },
+        )
+        market_summary = {
+            "annual_growth": float(getattr(market, "annual_growth", 0) or 0),
+            "club_interest": float(getattr(market, "club_interest", 0) or 0),
+            "league_score": float(getattr(market, "league_score", 0) or 0),
+            "age_factor": float(getattr(market, "age_factor", 0) or 0),
+            "club_reputation": float(getattr(market, "club_reputation", 0) or 0),
+            "contract_timing": clamp(100 - float(player.contract_months_remaining or 0)),
+            "market_stage": "active_window" if float(getattr(market, "club_interest", 0) or 0) >= 65 else "building_window",
+            "summary_json": {
+                "current_value": float(player.current_value),
+                "projected_value": float(scores["projected_value"]),
+            },
+        }
+        MarketAggregate.objects.update_or_create(player=player, defaults={"source_category": source_category, **market_summary})
+        marketing_summary = {
+            "followers": float(getattr(marketing, "followers", 0) or 0),
+            "engagement": float(getattr(marketing, "engagement", 0) or 0),
+            "mentions": float(getattr(marketing, "media_mentions", 0) or 0),
+            "sentiment": float(getattr(marketing, "sentiment_score", 0) or 0),
+            "sponsorships": float(getattr(marketing, "sponsorships", 0) or 0),
+            "public_narrative_indicators": {
+                "instagram_handle": getattr(marketing, "instagram_handle", ""),
+                "google_news_query": getattr(marketing, "google_news_query", ""),
+                "youtube_query": getattr(marketing, "youtube_query", ""),
+            },
+        }
+        MarketingAggregate.objects.update_or_create(player=player, defaults={"source_category": source_category, **marketing_summary})
+        ProjectionAggregate.objects.update_or_create(
+            player=player,
+            defaults={
+                "source_category": DataSourceLog.SourceType.GENERATED_BY_HBX,
+                "expected_growth": projection["projected_growth_pct"],
+                "floor_value": Decimal(str(projection["value_band"]["floor"])),
+                "base_case_value": Decimal(str(projection["value_band"]["expected"])),
+                "ceiling_value": Decimal(str(projection["value_band"]["ceiling"])),
+                "readiness_effect": projection["adaptation_score"],
+                "adaptation_risk": clamp(100 - projection["adaptation_score"]),
+                "stagnation_risk": projection["stagnation_risk_score"],
+                "target_markets": projection["fit_markets"],
+                "summary_json": _json_safe(projection),
+            },
+        )
+        OpportunityAggregate.objects.update_or_create(
+            player=player,
+            defaults={
+                "source_category": DataSourceLog.SourceType.GENERATED_BY_HBX,
+                "suggested_move": opportunity["recommended_move"],
+                "target_clubs": opportunity["target_clubs"],
+                "target_leagues": opportunity["target_leagues"],
+                "contract_opportunity": opportunity["window_status"],
+                "commercial_thesis": opportunity["thesis"],
+                "timing_summary": opportunity["window_status"],
+                "main_risk": opportunity["risk_flags"][0] if opportunity["risk_flags"] else "",
+                "main_opportunity": opportunity["target_clubs"][0]["club"] if opportunity["target_clubs"] else "",
+                "summary_json": _json_safe(opportunity),
+            },
+        )
+        return {
+            "profile_summary_json": _json_safe(profile_summary),
+            "team_context_summary_json": _json_safe(team_context_payload),
+            "performance_summary_json": _json_safe(performance_summary),
+            "behavioral_summary_json": _json_safe(behavioral_summary),
+            "market_summary_json": _json_safe(market_summary),
+            "marketing_summary_json": _json_safe(marketing_summary),
+            "projection_summary_json": _json_safe(projection),
+            "opportunity_summary_json": _json_safe(opportunity),
+            "hbx_score_summary_json": _json_safe(hbx_score_summary),
+        }
+
+
+def build_dashboard_executive_payload(player, lang="pt", compare_window_days=90):
+    """
+    Executive-only dashboard payload.
+    Operational writes should progressively move out of Dashboard and into their
+    dedicated modules (DevelopmentPlan, ProgressTracking, ScenarioLab).
+    """
+    core = getattr(player, "athlete360_core", None)
+    scores = calculate_scores(player, lang)
+    longitudinal = longitudinal_bi_payload(player, lang, compare_window_days)
+    latest_projection = player.projection_aggregate if hasattr(player, "projection_aggregate") else None
+    latest_opportunity = player.opportunity_aggregate if hasattr(player, "opportunity_aggregate") else None
+    percentile = calculate_percentile(player)
+    growth_rate = round(calculate_growth_rate(player) * 100, 2)
+    career_case = CareerIntelligenceCase.objects.filter(player=player).order_by("-updated_at", "-id").first()
+    career_completion = case_completion(career_case) if career_case else {}
+    latest_live_report = player.live_player_evaluations.order_by("-match_date", "-saved_at", "-id").first()
+    latest_live_summary = ""
+    if latest_live_report:
+        latest_live_summary = (
+            str(
+                (latest_live_report.payload or {})
+                .get("avaliacao_geral", {})
+                .get("resumo_do_desempenho", "")
+            ).strip()
+        )
+    hbx_profile = get_hbx_value_profile(player)
+    return {
+        "identity": {
+            "name": core.public_name if core and core.public_name else player.name,
+            "club": core.current_club if core else player.club_origin,
+            "league": core.current_league if core else player.league_level,
+            "country": core.current_country if core else (player.division_reference.country.name if player.division_reference_id else ""),
+            "position": core.primary_position if core else player.position,
+        },
+        "hbx_score_summary": _build_hbx_score_summary(scores),
+        "current_value": float(player.current_value),
+        "projected_value": float(scores["projected_value"]),
+        "percentile": percentile,
+        "growth_rate": growth_rate,
+        "alerts": longitudinal["alerts"],
+        "recent_evolution": longitudinal["delta"],
+        "main_recommendation": longitudinal["recommended_action"],
+        "pillar_summaries": {
+            "performance": scores["performance_score"],
+            "market": scores["market_score"],
+            "marketing": scores["marketing_score"],
+            "behavior": scores["behavior_score"],
+            "potential": scores["potential_score"],
+        },
+        "hbx_value_summary": {
+            "exists": bool(hbx_profile),
+            "market_perception_index": float(hbx_profile.market_perception_index) if hbx_profile else 0,
+            "trend_label": hbx_profile.trend_label if hbx_profile else "",
+            "narrative_label": hbx_profile.narrative_label if hbx_profile else "",
+            "source_count": (
+                ((hbx_profile.delivery_payload or {}).get("dashboard", {}) or {}).get("source_count", 0)
+                if hbx_profile else 0
+            ),
+            "manual_note": (
+                ((hbx_profile.delivery_payload or {}).get("manual_note", "")) if hbx_profile else ""
+            ),
+        },
+        "integrated_status": {
+            "career": {
+                "exists": bool(career_case),
+                "case_id": career_case.id if career_case else None,
+                "current_step": career_case.current_step if career_case else "",
+                "completion_count": sum(1 for ready in career_completion.values() if ready) if career_completion else 0,
+            },
+            "live": {
+                "exists": bool(latest_live_report),
+                "match_date": latest_live_report.match_date if latest_live_report else None,
+                "competition": latest_live_report.competition if latest_live_report else "",
+                "opponent": latest_live_report.opponent if latest_live_report else "",
+                "summary": latest_live_summary,
+            },
+        },
+        "projection_summary": latest_projection.summary_json if latest_projection else {},
+        "opportunity_summary": latest_opportunity.summary_json if latest_opportunity else {},
+    }
+
+
 def save_athlete_360_snapshots(player, snapshot_date=None, source=DataSourceLog.SourceType.SYSTEM, related_report=None, payload=None):
     snapshot_date = snapshot_date or timezone.localdate()
     confidence = _source_confidence(source)
     identity = ensure_athlete_identity(player)
+    consolidated = Athlete360Orchestrator.sync(player, snapshot_date=snapshot_date, source=source)
     scores = calculate_scores(player)
-    performance = getattr(player, "performance_metrics", None)
-    market = getattr(player, "market_metrics", None)
-    marketing = getattr(player, "marketing_metrics", None)
-    behavior = getattr(player, "behavior_metrics", None)
+    performance = _safe_related(player, "performance_metrics", _empty_metrics())
+    market = _safe_related(player, "market_metrics", _empty_metrics())
+    marketing = _safe_related(player, "marketing_metrics", _empty_metrics())
+    behavior = _safe_related(player, "behavior_metrics", _empty_metrics())
     performance_payload = _metric_payload(
         performance,
         ("xg", "xa", "passes_pct", "dribbles_pct", "tackles_pct", "high_intensity_distance", "final_third_recoveries"),
@@ -576,6 +992,15 @@ def save_athlete_360_snapshots(player, snapshot_date=None, source=DataSourceLog.
         {
             "identity_payload": _player_identity_payload(player, identity),
             "career_payload": _player_career_payload(player),
+            "profile_summary_json": consolidated["profile_summary_json"],
+            "team_context_summary_json": consolidated["team_context_summary_json"],
+            "performance_summary_json": consolidated["performance_summary_json"],
+            "behavioral_summary_json": consolidated["behavioral_summary_json"],
+            "market_summary_json": consolidated["market_summary_json"],
+            "marketing_summary_json": consolidated["marketing_summary_json"],
+            "projection_summary_json": consolidated["projection_summary_json"],
+            "opportunity_summary_json": consolidated["opportunity_summary_json"],
+            "hbx_score_summary_json": consolidated["hbx_score_summary_json"],
             "data_confidence_score": confidence,
         },
     )
@@ -2708,6 +3133,22 @@ def save_progress_tracking(player, cleaned_data):
     )
 
 
+def save_scenario_lab_entry(player, cleaned_data):
+    scenario = ScenarioLab.objects.create(
+        player=player,
+        snapshot_date=cleaned_data["date"],
+        current_value=cleaned_data["current_value"],
+        performance_score=cleaned_data.get("performance_score"),
+        market_score=cleaned_data.get("market_score"),
+        marketing_score=cleaned_data.get("marketing_score"),
+        behavior_score=cleaned_data.get("behavior_score"),
+        valuation_score=cleaned_data.get("valuation_score"),
+        notes=cleaned_data.get("notes", ""),
+    )
+    history_entry = save_manual_history_snapshot(player, cleaned_data)
+    return scenario, history_entry
+
+
 def save_athlete_career_entry(player, cleaned_data):
     if cleaned_data.get("is_current"):
         AthleteCareerEntry.objects.filter(player=player, is_current=True).update(is_current=False)
@@ -3407,6 +3848,381 @@ def build_report_audience_packages(player, lang="pt", compare_window_days=90):
         "projection": projection,
         "opportunity": opportunity,
         "comparison": comparison,
+    }
+
+
+def build_reports_executive_payload(player, lang="pt", compare_window_days=90):
+    dashboard_payload = build_dashboard_executive_payload(player, lang, compare_window_days)
+    audience_packages = build_report_audience_packages(player, lang, compare_window_days)
+    selected_case = CareerIntelligenceCase.objects.filter(player=player).order_by("-updated_at", "-id").first()
+    selected_hbx_profile = get_hbx_value_profile(player)
+    return {
+        "identity": dashboard_payload["identity"],
+        "score_summary": dashboard_payload["hbx_score_summary"],
+        "value_summary": {
+            "current_value": dashboard_payload["current_value"],
+            "projected_value": dashboard_payload["projected_value"],
+            "value_delta_pct": audience_packages["longitudinal"]["value_delta_pct"],
+            "growth_rate": dashboard_payload["growth_rate"],
+        },
+        "status_summary": {
+            "executive_status": audience_packages["longitudinal"]["status_label"],
+            "best_pillar_label": audience_packages["longitudinal"]["best_pillar_label"],
+            "worst_pillar_label": audience_packages["longitudinal"]["worst_pillar_label"],
+            "main_recommendation": audience_packages["longitudinal"]["recommended_action"],
+            "alerts": audience_packages["longitudinal"]["alerts"],
+            "insights": audience_packages["longitudinal"]["insights"],
+        },
+        "integrated_status": dashboard_payload["integrated_status"],
+        "hbx_value_summary": dashboard_payload["hbx_value_summary"],
+        "career_case": {
+            "exists": bool(selected_case),
+            "id": selected_case.id if selected_case else None,
+            "current_step": selected_case.current_step if selected_case else "",
+        },
+        "report_context": {
+            "longitudinal": audience_packages["longitudinal"],
+            "projection": audience_packages["projection"],
+            "opportunity": audience_packages["opportunity"],
+            "comparison": audience_packages["comparison"],
+            "packages": audience_packages["packages"],
+        },
+        "market_intelligence": {
+            "exists": bool(selected_hbx_profile),
+            "market_label": selected_hbx_profile.market_label if selected_hbx_profile else "",
+            "narrative_summary": selected_hbx_profile.narrative_summary if selected_hbx_profile else "",
+            "strategic_insights": selected_hbx_profile.strategic_insights if selected_hbx_profile else [],
+        },
+    }
+
+
+def build_market_intelligence_payload(player, lang="pt"):
+    core = getattr(player, "athlete360_core", None)
+    market_aggregate = getattr(player, "market_aggregate", None)
+    marketing_aggregate = getattr(player, "marketing_aggregate", None)
+    hbx_profile = get_hbx_value_profile(player)
+    if hbx_profile:
+        seed = build_hbx_seed_from_profile(player, hbx_profile)
+    else:
+        seed = {
+            "athlete_name": player.name,
+            "club_name": core.current_club if core else player.club_origin,
+            "position": core.primary_position if core else player.position,
+            "current_value": float(player.current_value),
+            "instagram_handle": (marketing_aggregate.public_narrative_indicators.get("instagram_handle", "") if marketing_aggregate else ""),
+            "google_news_query": (marketing_aggregate.public_narrative_indicators.get("google_news_query", "") if marketing_aggregate else (player.public_name or player.name)),
+            "youtube_query": (marketing_aggregate.public_narrative_indicators.get("youtube_query", "") if marketing_aggregate else (player.public_name or player.name)),
+            "tiktok_handle": "",
+            "manual_context": "",
+            "narrative_keywords": [],
+            "performance_rating": 0,
+            "attention_spike": 0,
+            "market_response": 0,
+            "visibility_efficiency": 0,
+        }
+    metrics = compute_hbx_value_profile(seed)
+    source_count = sum(1 for block in metrics["source_collection"].values() if any(block.values()))
+    return {
+        "identity": {
+            "name": core.public_name if core and core.public_name else player.name,
+            "club": core.current_club if core else player.club_origin,
+            "league": core.current_league if core else player.league_level,
+            "country": core.current_country if core else (player.division_reference.country.name if player.division_reference_id else ""),
+            "position": core.primary_position if core else player.position,
+        },
+        "workflow_summary": {
+            "status": "Integrado ao dashboard" if hbx_profile else "Aguardando coleta",
+            "source_count": (
+                ((hbx_profile.delivery_payload or {}).get("dashboard", {}) or {}).get("source_count", source_count)
+                if hbx_profile else source_count
+            ),
+        },
+        "market_summary": {
+            "annual_growth": market_aggregate.annual_growth if market_aggregate else 0,
+            "club_interest": market_aggregate.club_interest if market_aggregate else 0,
+            "league_score": market_aggregate.league_score if market_aggregate else 0,
+            "contract_timing": market_aggregate.contract_timing if market_aggregate else 0,
+            "market_stage": market_aggregate.market_stage if market_aggregate else "",
+        },
+        "marketing_summary": {
+            "followers": marketing_aggregate.followers if marketing_aggregate else 0,
+            "engagement": marketing_aggregate.engagement if marketing_aggregate else 0,
+            "mentions": marketing_aggregate.mentions if marketing_aggregate else 0,
+            "sentiment": marketing_aggregate.sentiment if marketing_aggregate else 0,
+            "sponsorships": marketing_aggregate.sponsorships if marketing_aggregate else 0,
+        },
+        "metrics": metrics,
+        "profile": hbx_profile,
+        "seed": seed,
+    }
+
+
+def build_performance_intelligence_payload(player, lang="pt", compare_window_days=90):
+    dashboard_payload = build_dashboard_executive_payload(player, lang, compare_window_days)
+    performance_aggregate = getattr(player, "performance_aggregate", None)
+    latest_case = CareerIntelligenceCase.objects.filter(player=player).order_by("-updated_at", "-id").first()
+    latest_live_report = player.live_player_evaluations.order_by("-match_date", "-saved_at", "-id").first()
+    longitudinal = longitudinal_bi_payload(player, lang, compare_window_days)
+    comparison = build_comparative_intelligence(player, lang, compare_window_days, shortlist_limit=3)
+    aggregate_summary = {
+        "xg": performance_aggregate.xg if performance_aggregate else 0,
+        "xa": performance_aggregate.xa if performance_aggregate else 0,
+        "passing": performance_aggregate.passing if performance_aggregate else 0,
+        "dribbling": performance_aggregate.dribbling if performance_aggregate else 0,
+        "tackling": performance_aggregate.tackling if performance_aggregate else 0,
+        "high_intensity_distance": performance_aggregate.high_intensity_distance if performance_aggregate else 0,
+        "recoveries": performance_aggregate.recoveries if performance_aggregate else 0,
+        "source_category": performance_aggregate.source_category if performance_aggregate else "",
+        "match_analysis_summary": performance_aggregate.match_analysis_summary if performance_aggregate else {},
+        "trend_deltas": performance_aggregate.trend_deltas if performance_aggregate else {},
+    }
+    latest_match_summary = ""
+    if latest_live_report:
+        latest_match_summary = str(
+            ((latest_live_report.payload or {}).get("avaliacao_geral", {}) or {}).get("resumo_do_desempenho", "")
+        ).strip()
+    return {
+        "identity": dashboard_payload["identity"],
+        "score_summary": dashboard_payload["hbx_score_summary"],
+        "status_summary": {
+            "executive_status": longitudinal["status_label"],
+            "main_recommendation": longitudinal["recommended_action"],
+            "alerts": longitudinal["alerts"],
+            "insights": longitudinal["insights"],
+            "best_pillar_label": longitudinal["best_pillar_label"],
+            "worst_pillar_label": longitudinal["worst_pillar_label"],
+        },
+        "performance_summary": aggregate_summary,
+        "integrated_status": {
+            "career": {
+                **dashboard_payload["integrated_status"]["career"],
+                "current_step_label": get_career_step_label(
+                    dashboard_payload["integrated_status"]["career"]["current_step"] or "athlete", lang
+                ) if dashboard_payload["integrated_status"]["career"]["exists"] else "",
+            },
+            "live": {
+                **dashboard_payload["integrated_status"]["live"],
+                "latest_match_summary": latest_match_summary,
+            },
+        },
+        "comparison_summary": {
+            "self_axis": comparison["self_axis"],
+            "contextual_gap": comparison["contextual_summary"]["delta_vs_group"],
+            "contextual_fit_label": comparison["executive_note"],
+            "shortlist_count": comparison["shortlist_summary"]["size"],
+        },
+        "case_summary": {
+            "exists": bool(latest_case),
+            "id": latest_case.id if latest_case else None,
+            "current_step": latest_case.current_step if latest_case else "",
+            "updated_at": latest_case.updated_at if latest_case else None,
+        },
+    }
+
+
+def build_match_analysis_payload(player, lang="pt"):
+    dashboard_payload = build_dashboard_executive_payload(player, lang, compare_window_days=90)
+    core = getattr(player, "athlete360_core", None)
+    performance_aggregate = getattr(player, "performance_aggregate", None)
+    team_context = player.team_context_snapshots.order_by("-snapshot_date", "-id").first()
+    latest_live_report = player.live_player_evaluations.order_by("-match_date", "-saved_at", "-id").first()
+    latest_live_summary = ""
+    if latest_live_report:
+        latest_live_summary = str(
+            ((latest_live_report.payload or {}).get("avaliacao_geral", {}) or {}).get("resumo_do_desempenho", "")
+        ).strip()
+    return {
+        "identity": dashboard_payload["identity"],
+        "score_summary": dashboard_payload["hbx_score_summary"],
+        "team_context": {
+            "club_name": team_context.club_name if team_context else (core.current_club if core else player.club_origin),
+            "team_category": team_context.team_category if team_context else (core.current_category if core else player.category),
+            "coach_name": team_context.coach_name if team_context else (core.current_coach if core else ""),
+            "primary_formation": team_context.primary_formation if team_context else (core.primary_formation if core else ""),
+            "secondary_formation": team_context.secondary_formation if team_context else "",
+            "playing_style": team_context.playing_style if team_context else "",
+            "squad_status": team_context.squad_status if team_context else (core.squad_status if core else ""),
+            "tactical_role": team_context.tactical_role if team_context else (core.tactical_role if core else ""),
+            "system_fit_notes": team_context.system_fit_notes if team_context else "",
+            "coach_trust_level": team_context.coach_trust_level if team_context else 0,
+            "starter_probability": team_context.starter_probability if team_context else 0,
+            "last_updated": team_context.last_updated if team_context else None,
+        },
+        "performance_summary": {
+            "xg": performance_aggregate.xg if performance_aggregate else 0,
+            "xa": performance_aggregate.xa if performance_aggregate else 0,
+            "passing": performance_aggregate.passing if performance_aggregate else 0,
+            "dribbling": performance_aggregate.dribbling if performance_aggregate else 0,
+            "tackling": performance_aggregate.tackling if performance_aggregate else 0,
+            "recoveries": performance_aggregate.recoveries if performance_aggregate else 0,
+            "reports_count": ((performance_aggregate.match_analysis_summary or {}).get("reports_count", 0) if performance_aggregate else 0),
+            "latest_match_date": ((performance_aggregate.match_analysis_summary or {}).get("latest_match_date", "") if performance_aggregate else ""),
+        },
+        "integrated_status": {
+            "current_value": dashboard_payload["current_value"],
+            "projected_value": dashboard_payload["projected_value"],
+            "latest_live_summary": latest_live_summary,
+            "main_recommendation": dashboard_payload["main_recommendation"],
+        },
+    }
+
+
+def build_athlete360_overview_payload(player, lang="pt"):
+    dashboard_payload = build_dashboard_executive_payload(player, lang, compare_window_days=90)
+    comparative = build_comparative_intelligence(player, lang, compare_window_days=90, shortlist_limit=3)
+    projection = build_projection_intelligence(player, lang, period="12")
+    opportunity = build_opportunity_intelligence(player, lang, period="12")
+    behavioral = build_behavioral_intelligence(player)
+    behavior_driver_map = {item["label"].lower(): item["value"] for item in behavioral.get("drivers", [])}
+    team_context = player.team_context_snapshots.order_by("-snapshot_date", "-id").first()
+    core = getattr(player, "athlete360_core", None)
+    snapshot_counts = {
+        "athlete": player.athlete_snapshots.count(),
+        "performance": player.performance_snapshots.count(),
+        "behavior": player.behavior_snapshots.count(),
+        "market": player.market_snapshots.count(),
+        "marketing": player.marketing_snapshots.count(),
+        "score": player.score_snapshots.count(),
+        "projection": player.projection_snapshots.count(),
+    }
+    return {
+        "identity": dashboard_payload["identity"],
+        "score_summary": dashboard_payload["hbx_score_summary"],
+        "value_summary": {
+            "current_value": dashboard_payload["current_value"],
+            "projected_value": dashboard_payload["projected_value"],
+            "growth_rate": dashboard_payload["growth_rate"],
+            "percentile": dashboard_payload["percentile"],
+        },
+        "team_context": {
+            "club_name": team_context.club_name if team_context else (core.current_club if core else player.club_origin),
+            "team_category": team_context.team_category if team_context else (core.current_category if core else player.category),
+            "coach_name": team_context.coach_name if team_context else (core.current_coach if core else ""),
+            "primary_formation": team_context.primary_formation if team_context else (core.primary_formation if core else ""),
+            "tactical_role": team_context.tactical_role if team_context else (core.tactical_role if core else ""),
+            "squad_status": team_context.squad_status if team_context else (core.squad_status if core else ""),
+            "starter_probability": team_context.starter_probability if team_context else 0,
+        },
+        "behavior_summary": {
+            "status": behavioral["status"],
+            "trend": behavioral["trend_label"],
+            "main_alert": behavioral["alert"],
+            "readiness": behavior_driver_map.get("readiness", 0),
+            "habits": behavior_driver_map.get("habits", 0),
+        },
+        "comparative_summary": {
+            "status_label": comparative["self_axis"]["status_label"],
+            "contextual_delta": comparative["contextual_summary"]["delta_vs_group"],
+            "shortlist_size": comparative["shortlist_summary"]["size"],
+            "executive_note": comparative["executive_note"],
+        },
+        "projection_summary": {
+            "projected_growth_pct": projection["projected_growth_pct"],
+            "timing_label": projection["timing_label"],
+            "readiness_label": projection["readiness_label"],
+            "main_driver": projection["main_driver"],
+        },
+        "opportunity_summary": {
+            "window_status": opportunity["window_status"],
+            "recommended_move": opportunity["recommended_move"],
+            "contract_months": opportunity["contract_months"],
+            "thesis": opportunity["thesis"],
+        },
+        "integrated_status": dashboard_payload["integrated_status"],
+        "main_recommendation": dashboard_payload["main_recommendation"],
+        "snapshot_counts": snapshot_counts,
+    }
+
+
+def build_data_hub_payload(user):
+    athletes_qs = Player.objects.filter(user=user)
+    source_logs = DataSourceLog.objects.filter(player__user=user)
+    athlete_count = athletes_qs.count()
+    source_counts = {
+        "internal_manual": source_logs.filter(source_type=DataSourceLog.SourceType.INTERNAL_MANUAL).count(),
+        "base44_registry": source_logs.filter(source_type=DataSourceLog.SourceType.BASE44_REGISTRY).count(),
+        "go_carriera": source_logs.filter(source_type=DataSourceLog.SourceType.GO_CARRIERA).count(),
+        "imported_csv": source_logs.filter(source_type=DataSourceLog.SourceType.IMPORTED_CSV).count(),
+        "generated_by_hbx": source_logs.filter(source_type=DataSourceLog.SourceType.GENERATED_BY_HBX).count(),
+        "ai_interpretation": source_logs.filter(source_type=DataSourceLog.SourceType.AI_INTERPRETATION).count(),
+        "match_analysis": source_logs.filter(source_type=DataSourceLog.SourceType.MATCH_ANALYSIS).count(),
+    }
+    latest_log = source_logs.order_by("-collected_at", "-id").first()
+    athlete360_ready = Athlete360Core.objects.filter(player__user=user).count()
+    snapshots_ready = AthleteSnapshot.objects.filter(player__user=user).count()
+    behavioral_stream_ready = BehavioralAggregate.objects.filter(player__user=user, source_category=DataSourceLog.SourceType.GO_CARRIERA).count()
+    return {
+        "coverage": {
+            "athletes": athlete_count,
+            "athlete360_ready": athlete360_ready,
+            "snapshots_ready": snapshots_ready,
+            "behavioral_stream_ready": behavioral_stream_ready,
+        },
+        "source_counts": source_counts,
+        "ingestion_targets": [
+            {
+                "name": "Internal Manual",
+                "source_type": DataSourceLog.SourceType.INTERNAL_MANUAL,
+                "status": "active",
+                "records": source_counts["internal_manual"],
+                "target": "Athlete360Core, TeamContextSnapshot e agregados base",
+                "notes": "Entrada manual da consultoria continua sendo a origem mais flexível para completar contexto e dados faltantes.",
+            },
+            {
+                "name": "Imported CSV",
+                "source_type": DataSourceLog.SourceType.IMPORTED_CSV,
+                "status": "active",
+                "records": source_counts["imported_csv"],
+                "target": "Player, Athlete360Core, snapshots e seeds iniciais",
+                "notes": "Canal operacional para carga em lote de atletas e atualização estrutural da base.",
+            },
+            {
+                "name": "Match Analysis",
+                "source_type": DataSourceLog.SourceType.MATCH_ANALYSIS,
+                "status": "active",
+                "records": source_counts["match_analysis"],
+                "target": "PerformanceAggregate, snapshots de performance e timeline longitudinal",
+                "notes": "A análise ao vivo já alimenta performance consolidada e histórico do atleta.",
+            },
+            {
+                "name": "Go Carriera",
+                "source_type": DataSourceLog.SourceType.GO_CARRIERA,
+                "status": "connected" if source_counts["go_carriera"] else "ready",
+                "records": source_counts["go_carriera"],
+                "target": "BehavioralAggregate, BehaviorSnapshot e Potential/Projection",
+                "notes": "Fonte oficial para hábitos, prontidão, recuperação e consistência comportamental.",
+            },
+            {
+                "name": "Base44 Registry",
+                "source_type": DataSourceLog.SourceType.BASE44_REGISTRY,
+                "status": "ready",
+                "records": source_counts["base44_registry"],
+                "target": "AthleteIdentity, TeamContextSnapshot, clube, liga e contexto competitivo externo",
+                "notes": "Pronto para receber registro global, IDs externos e contexto tático estruturado.",
+            },
+            {
+                "name": "AI Interpretation",
+                "source_type": DataSourceLog.SourceType.AI_INTERPRETATION,
+                "status": "active",
+                "records": source_counts["ai_interpretation"],
+                "target": "Leitura executiva, resumo, narrativa e apoio a reports",
+                "notes": "A IA interpreta dados consolidados; não substitui a origem primária dos campos.",
+            },
+        ],
+        "orchestration_rules": [
+            "Toda nova origem deve apontar primeiro para Athlete360Core ou um aggregate oficial, nunca direto para um template.",
+            "Snapshots são o destino obrigatório para leitura longitudinal, relatórios e BI futuro.",
+            "TeamContextSnapshot é a referência tática oficial para Match Analysis e contexto competitivo.",
+            "Behavioral data deve preservar origem entre manual interno e Go Carriera.",
+            "Campos gerados por IA precisam ser tratados como interpretação, nunca como dado primário.",
+        ],
+        "latest_activity": {
+            "exists": bool(latest_log),
+            "source_name": latest_log.source_name if latest_log else "",
+            "source_type": latest_log.source_type if latest_log else "",
+            "confidence_score": latest_log.confidence_score if latest_log else 0,
+            "collected_at": latest_log.collected_at if latest_log else None,
+        },
     }
 
 

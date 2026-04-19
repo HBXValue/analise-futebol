@@ -75,49 +75,41 @@
         {% endif %}
 
         {% if featured_player %}
-            {% for item in players_payload %}
-                {% if item.player.id == featured_player.id %}
-                    <section class="grid stats-grid">
-                        <article class="stat-card">
-                            <span>{{ t.featured_player }}</span>
-                            <strong>{{ item.player.name }}</strong>
-                            <div>{{ item.player.position }} | {% if item.player.division_reference_id %}{{ item.player.division_reference.country.name }} | {{ item.player.division_reference.short_name|default:item.player.league_level }} | {% endif %}{{ item.player.club_reference.short_name|default:item.player.club_origin }}</div>
-                        </article>
-                        <article class="stat-card">
-                            <span>{{ t.valuation_score }}</span>
-                            <strong>{{ item.scores.valuation_score }}</strong>
-                            <div class="badge">{{ item.scores.classification }}</div>
-                            <div style="color: var(--muted); margin-top: 8px;">{{ item.scores.traffic_light }}</div>
-                        </article>
-                        <article class="stat-card">
-                            <span>{{ t.current_value }}</span>
-                            <strong>EUR {{ item.player.current_value }}</strong>
-                            <div>{% if item.player.division_reference_id %}{{ item.player.division_reference.country.name }} | {{ item.player.division_reference.name }}{% else %}{{ item.player.league_level }}{% endif %}</div>
-                        </article>
-                        <article class="stat-card">
-                            <span>{{ t.projected_value }}</span>
-                            <strong>EUR {{ item.scores.projected_value }}</strong>
-                            <div>{{ item.percentile }} {{ t.percentile_in_position }} {{ item.player.position }}</div>
-                            <div style="color: var(--muted); margin-top: 8px;">Potential: {{ item.scores.potential_score }}</div>
-                        </article>
-                        <article class="stat-card">
-                            <span>{{ t.growth_rate }}</span>
-                            <strong>{{ item.growth_rate }}%</strong>
-                            <div>{{ t.player_evolution }}</div>
-                        </article>
-                        <article class="stat-card">
-                            <span>HBX Value</span>
-                            <strong>{% if item.hbx_profile %}{{ item.hbx_profile.market_perception_index|floatformat:1 }}{% else %}-{% endif %}</strong>
-                            <div>{% if item.hbx_profile %}{{ item.hbx_profile.trend_label }} | {{ item.hbx_profile.narrative_label }}{% else %}Sem perfil HBX salvo{% endif %}</div>
-                            <div style="color: var(--muted); font-size: 0.85rem;">
-                                {% if item.hbx_profile and item.hbx_profile.delivery_payload.dashboard.source_count %}
-                                    {{ item.hbx_profile.delivery_payload.dashboard.source_count }} fontes integradas
-                                {% endif %}
-                            </div>
-                        </article>
-                    </section>
-                {% endif %}
-            {% endfor %}
+            <section class="grid stats-grid">
+                <article class="stat-card">
+                    <span>{{ t.featured_player }}</span>
+                    <strong>{{ dashboard_executive_payload.identity.name }}</strong>
+                    <div>{{ dashboard_executive_payload.identity.position }} | {% if dashboard_executive_payload.identity.country %}{{ dashboard_executive_payload.identity.country }} | {% endif %}{{ dashboard_executive_payload.identity.league }} | {{ dashboard_executive_payload.identity.club }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>{{ t.valuation_score }}</span>
+                    <strong>{{ dashboard_executive_payload.hbx_score_summary.final_score|floatformat:1 }}</strong>
+                    <div class="badge">{{ dashboard_executive_payload.hbx_score_summary.classification }}</div>
+                    <div style="color: var(--muted); margin-top: 8px;">{{ dashboard_executive_payload.hbx_score_summary.traffic_light }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>{{ t.current_value }}</span>
+                    <strong>EUR {{ dashboard_executive_payload.current_value|floatformat:2 }}</strong>
+                    <div>{% if dashboard_executive_payload.identity.country %}{{ dashboard_executive_payload.identity.country }} | {% endif %}{{ dashboard_executive_payload.identity.league }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>{{ t.projected_value }}</span>
+                    <strong>EUR {{ dashboard_executive_payload.projected_value|floatformat:2 }}</strong>
+                    <div>{{ dashboard_executive_payload.percentile|floatformat:0 }} {{ t.percentile_in_position }} {{ dashboard_executive_payload.identity.position }}</div>
+                    <div style="color: var(--muted); margin-top: 8px;">Potential: {{ dashboard_executive_payload.pillar_summaries.potential|floatformat:1 }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>{{ t.growth_rate }}</span>
+                    <strong>{{ dashboard_executive_payload.growth_rate|floatformat:1 }}%</strong>
+                    <div>{{ t.player_evolution }}</div>
+                </article>
+                <article class="stat-card">
+                    <span>HBX Value</span>
+                    <strong>{% if dashboard_executive_payload.hbx_value_summary.exists %}{{ dashboard_executive_payload.hbx_value_summary.market_perception_index|floatformat:1 }}{% else %}-{% endif %}</strong>
+                    <div>{% if dashboard_executive_payload.hbx_value_summary.exists %}{{ dashboard_executive_payload.hbx_value_summary.trend_label }} | {{ dashboard_executive_payload.hbx_value_summary.narrative_label }}{% else %}Sem perfil HBX salvo{% endif %}</div>
+                    <div style="color: var(--muted); font-size: 0.85rem;">{{ dashboard_executive_payload.hbx_value_summary.source_count }} fontes integradas</div>
+                </article>
+            </section>
 
             {% if longitudinal_bi %}
             <section class="panel" style="margin-top: 20px;">
@@ -342,9 +334,9 @@
                             <div class="progress-meta">
                                 <div class="progress-label">Carreira</div>
                                 <div class="progress-values">
-                                    {% if featured_payload.career_case %}
-                                        <span>Etapa atual: {{ featured_payload.career_case.current_step|title }}</span>
-                                        <span>Blocos completos: {{ featured_payload.career_completion_count }}/8</span>
+                                    {% if dashboard_executive_payload.integrated_status.career.exists %}
+                                        <span>Etapa atual: {{ dashboard_executive_payload.integrated_status.career.current_step|title }}</span>
+                                        <span>Blocos completos: {{ dashboard_executive_payload.integrated_status.career.completion_count }}/8</span>
                                     {% else %}
                                         <span>Nenhum caso vinculado</span>
                                     {% endif %}
@@ -355,9 +347,9 @@
                             <div class="progress-meta">
                                 <div class="progress-label">Ultima analise ao vivo</div>
                                 <div class="progress-values">
-                                    {% if featured_payload.latest_live_report %}
-                                        <span>{{ featured_payload.latest_live_report.match_date|date:"d/m/Y" }} | {{ featured_payload.latest_live_report.competition|default:"Sem competicao" }}</span>
-                                        <span>{{ featured_payload.latest_live_report.opponent|default:"Sem adversario" }}</span>
+                                    {% if dashboard_executive_payload.integrated_status.live.exists %}
+                                        <span>{{ dashboard_executive_payload.integrated_status.live.match_date|date:"d/m/Y" }} | {{ dashboard_executive_payload.integrated_status.live.competition|default:"Sem competicao" }}</span>
+                                        <span>{{ dashboard_executive_payload.integrated_status.live.opponent|default:"Sem adversario" }}</span>
                                     {% else %}
                                         <span>Nenhuma ficha salva</span>
                                     {% endif %}
@@ -368,11 +360,11 @@
                             <div class="progress-meta">
                                 <div class="progress-label">HBX Value</div>
                                 <div class="progress-values">
-                                    {% if featured_payload.hbx_profile %}
-                                        <span>MPI: {{ featured_payload.hbx_profile.market_perception_index|floatformat:1 }}</span>
-                                        <span>{{ featured_payload.hbx_profile.trend_label }} | {{ featured_payload.hbx_profile.narrative_label }}</span>
-                                        {% if featured_payload.hbx_profile.delivery_payload.manual_note %}
-                                            <span>{{ featured_payload.hbx_profile.delivery_payload.manual_note }}</span>
+                                    {% if dashboard_executive_payload.hbx_value_summary.exists %}
+                                        <span>MPI: {{ dashboard_executive_payload.hbx_value_summary.market_perception_index|floatformat:1 }}</span>
+                                        <span>{{ dashboard_executive_payload.hbx_value_summary.trend_label }} | {{ dashboard_executive_payload.hbx_value_summary.narrative_label }}</span>
+                                        {% if dashboard_executive_payload.hbx_value_summary.manual_note %}
+                                            <span>{{ dashboard_executive_payload.hbx_value_summary.manual_note }}</span>
                                         {% endif %}
                                     {% else %}
                                         <span>Nenhum perfil HBX salvo</span>
@@ -380,23 +372,24 @@
                                 </div>
                             </div>
                         </article>
-                        {% if featured_payload.latest_live_summary %}
+                        {% if dashboard_executive_payload.integrated_status.live.summary %}
                             <article class="progress-card">
                                 <div class="progress-meta">
                                     <div class="progress-label">Leitura recente</div>
                                     <div class="progress-values">
-                                        <span>{{ featured_payload.latest_live_summary }}</span>
+                                        <span>{{ dashboard_executive_payload.integrated_status.live.summary }}</span>
                                     </div>
                                 </div>
                             </article>
                         {% endif %}
                     </div>
                     <div class="actions">
-                        {% if featured_payload.career_case %}
-                            <a class="button button-secondary" href="{% url 'career-case-step' featured_payload.career_case.id featured_payload.career_case.current_step %}?lang={{ lang }}">Abrir carreira</a>
+                        <a class="button button-secondary" href="{% url 'player-operations' featured_player.id %}?lang={{ lang }}">Athlete Operations</a>
+                        {% if dashboard_executive_payload.integrated_status.career.exists %}
+                            <a class="button button-secondary" href="{% url 'career-case-step' dashboard_executive_payload.integrated_status.career.case_id dashboard_executive_payload.integrated_status.career.current_step %}?lang={{ lang }}">Abrir carreira</a>
                         {% endif %}
-                        <a class="button button-secondary" href="{% url 'hbx-value-score' %}?player={{ featured_payload.player.id }}&lang={{ lang }}">HBX Value</a>
-                        <a class="button button-secondary" href="{% url 'live-analysis' %}?player={{ featured_payload.player.id }}&lang={{ lang }}">Abrir ao vivo</a>
+                        <a class="button button-secondary" href="{% url 'hbx-value-score' %}?player={{ featured_player.id }}&lang={{ lang }}">HBX Value</a>
+                        <a class="button button-secondary" href="{% url 'live-analysis' %}?player={{ featured_player.id }}&lang={{ lang }}">Abrir ao vivo</a>
                     </div>
                 </article>
                 <article class="panel">
@@ -444,79 +437,6 @@
                     <h2>Composicao do score final</h2>
                     <p>Mostra quanto cada pilar esta contribuindo para o score final do atleta no modelo atual.</p>
                     <div id="score-composition-chart" style="height: 340px;"></div>
-                </article>
-            </section>
-            <section class="grid chart-grid">
-                <article class="panel">
-                    <h2>{{ t.action_plan }}</h2>
-                    <p>Use objetivos claros e metricas comparaveis. Scores internos seguem escala de 0 a 100, e dados de performance/jogo devem ser considerados por 90 minutos.</p>
-                    <form method="post" action="{% url 'player-plan' featured_player.id %}">
-                        {% csrf_token %}
-                        <div class="form-grid">
-                            {% for field in development_plan_form %}
-                                <div class="field-group">
-                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                    {{ field }}
-                                </div>
-                            {% endfor %}
-                        </div>
-                        <div class="actions">
-                            <button class="button button-primary" type="submit">{{ t.save_plan }}</button>
-                        </div>
-                    </form>
-                    <table class="player-table">
-                        <tbody>
-                        {% for plan in featured_player.development_plans.all|slice:":4" %}
-                            <tr>
-                                <td>
-                                    <strong>{{ plan.goal }}</strong><br>
-                                    <span style="color: var(--muted);">{{ plan.target_metric }} -> {{ plan.target_value }} | {{ t.deadline }}: {{ plan.deadline|date:"d/m/Y" }}</span>
-                                </td>
-                            </tr>
-                        {% empty %}
-                            <tr><td>{{ t.no_plans }}</td></tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </article>
-            </section>
-            <section class="grid chart-grid">
-                <article class="panel">
-                    <h2>{{ t.evolution_followup }}</h2>
-                    <p>Mantenha sempre o mesmo criterio de medicao. Para scores use 0 a 100; para dados de jogo, acompanhe os numeros por 90 minutos.</p>
-                    <form method="post" action="{% url 'player-progress' featured_player.id %}">
-                        {% csrf_token %}
-                        <div class="form-grid">
-                            {% for field in progress_tracking_form %}
-                                <div class="field-group">
-                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                    {{ field }}
-                                </div>
-                            {% endfor %}
-                        </div>
-                        <div class="actions">
-                            <button class="button button-primary" type="submit">{{ t.save_progress }}</button>
-                        </div>
-                    </form>
-                    <div class="progress-stack">
-                        {% for item in featured_player.progress_tracking.all|slice:":5" %}
-                            <article class="progress-card">
-                                <div class="progress-meta">
-                                    <div class="progress-label">{{ item.metric }}</div>
-                                    <div class="progress-values">
-                                        <span>{{ t.current_value }}: {{ item.current_value }}</span>
-                                        <span>{{ t.target_value }}: {{ item.target_value }}</span>
-                                        <span>{{ t.progress }}: {{ item.progress_pct }}%</span>
-                                    </div>
-                                </div>
-                                <div class="progress-rail">
-                                    <div class="progress-bar target" style="left: 0; width: {{ item.progress_pct }}%;"></div>
-                                </div>
-                            </article>
-                        {% empty %}
-                            <article class="progress-card">{{ t.no_progress }}</article>
-                        {% endfor %}
-                    </div>
                 </article>
             </section>
             <section class="grid chart-grid">
@@ -605,27 +525,6 @@
                     </div>
                 </article>
                 {% endif %}
-            </section>
-            <section class="grid chart-grid">
-                <article class="panel">
-                    <h2>{{ t.simulation_snapshot }}</h2>
-                    <p>{{ t.use_blank_scores }}</p>
-                    <p>Se preencher notas manuais, siga a escala de 0 a 100 para manter o dashboard consistente.</p>
-                    <form method="post" action="{% url 'player-snapshot' featured_player.id %}">
-                        {% csrf_token %}
-                        <div class="form-grid">
-                            {% for field in snapshot_form %}
-                                <div class="field-group">
-                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                    {{ field }}
-                                </div>
-                            {% endfor %}
-                        </div>
-                        <div class="actions">
-                            <button class="button button-primary" type="submit">{{ t.save_snapshot }}</button>
-                        </div>
-                    </form>
-                </article>
             </section>
             {% if growth_insights %}
                 <section class="grid chart-grid">

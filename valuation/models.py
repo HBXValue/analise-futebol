@@ -167,6 +167,184 @@ class AthleteIdentity(models.Model):
         return f"{self.player.name} | {self.player_uuid}"
 
 
+class Athlete360Core(models.Model):
+    """
+    Central source of truth for the athlete's current consolidated state.
+    Existing modules are preserved, but should progressively read from here.
+    """
+
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="athlete360_core")
+    player_uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    full_name = models.CharField(max_length=160)
+    public_name = models.CharField(max_length=160, blank=True)
+    birth_date = models.DateField(null=True, blank=True)
+    age = models.PositiveSmallIntegerField(null=True, blank=True)
+    nationality = models.CharField(max_length=80, blank=True)
+    secondary_nationalities = models.JSONField(default=list, blank=True)
+    primary_position = models.CharField(max_length=60, blank=True)
+    secondary_positions = models.JSONField(default=list, blank=True)
+    dominant_foot = models.CharField(max_length=10, blank=True)
+    height_cm = models.PositiveSmallIntegerField(null=True, blank=True)
+    weight_kg = models.PositiveSmallIntegerField(null=True, blank=True)
+    current_country = models.CharField(max_length=120, blank=True)
+    current_league = models.CharField(max_length=120, blank=True)
+    current_club = models.CharField(max_length=160, blank=True)
+    current_category = models.CharField(max_length=20, blank=True)
+    squad_status = models.CharField(max_length=20, blank=True)
+    contract_months_remaining = models.PositiveSmallIntegerField(null=True, blank=True)
+    current_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    current_coach = models.CharField(max_length=160, blank=True)
+    primary_formation = models.CharField(max_length=40, blank=True)
+    tactical_role = models.CharField(max_length=120, blank=True)
+    team_context_summary = models.JSONField(default=dict, blank=True)
+    source_summary = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "athlete360_core"
+        ordering = ["player__name", "id"]
+
+
+class TeamContextSnapshot(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="team_context_snapshots")
+    snapshot_date = models.DateField()
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    club_name = models.CharField(max_length=160, blank=True)
+    team_category = models.CharField(max_length=40, blank=True)
+    coach_name = models.CharField(max_length=160, blank=True)
+    primary_formation = models.CharField(max_length=40, blank=True)
+    secondary_formation = models.CharField(max_length=40, blank=True)
+    playing_style = models.CharField(max_length=160, blank=True)
+    squad_status = models.CharField(max_length=40, blank=True)
+    tactical_role = models.CharField(max_length=120, blank=True)
+    system_fit_notes = models.TextField(blank=True)
+    coach_trust_level = models.FloatField(default=0)
+    starter_probability = models.FloatField(default=0)
+    summary_json = models.JSONField(default=dict, blank=True)
+    last_updated = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "team_context_snapshots"
+        ordering = ["-snapshot_date", "-id"]
+        unique_together = ("player", "snapshot_date")
+
+
+class PerformanceAggregate(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="performance_aggregate")
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    xg = models.FloatField(default=0)
+    xa = models.FloatField(default=0)
+    passing = models.FloatField(default=0)
+    dribbling = models.FloatField(default=0)
+    tackling = models.FloatField(default=0)
+    high_intensity_distance = models.FloatField(default=0)
+    recoveries = models.FloatField(default=0)
+    match_analysis_summary = models.JSONField(default=dict, blank=True)
+    trend_deltas = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "performance_aggregates"
+
+
+class BehavioralAggregate(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="behavioral_aggregate")
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    conscientiousness = models.FloatField(default=0)
+    adaptability = models.FloatField(default=0)
+    resilience = models.FloatField(default=0)
+    deliberate_practice = models.FloatField(default=0)
+    executive_function = models.FloatField(default=0)
+    leadership = models.FloatField(default=0)
+    readiness = models.FloatField(default=0)
+    habits = models.FloatField(default=0)
+    emotional_stability = models.FloatField(default=0)
+    injury_behavior = models.FloatField(default=0)
+    adherence = models.FloatField(default=0)
+    consistency = models.FloatField(default=0)
+    source_metadata = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "behavioral_aggregates"
+
+
+class MarketAggregate(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="market_aggregate")
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    annual_growth = models.FloatField(default=0)
+    club_interest = models.FloatField(default=0)
+    league_score = models.FloatField(default=0)
+    age_factor = models.FloatField(default=0)
+    club_reputation = models.FloatField(default=0)
+    contract_timing = models.FloatField(default=0)
+    market_stage = models.CharField(max_length=80, blank=True)
+    summary_json = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "market_aggregates"
+
+
+class MarketingAggregate(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="marketing_aggregate")
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    followers = models.FloatField(default=0)
+    engagement = models.FloatField(default=0)
+    mentions = models.FloatField(default=0)
+    sentiment = models.FloatField(default=0)
+    sponsorships = models.FloatField(default=0)
+    public_narrative_indicators = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "marketing_aggregates"
+
+
+class ProjectionAggregate(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="projection_aggregate")
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    expected_growth = models.FloatField(default=0)
+    floor_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    base_case_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    ceiling_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    readiness_effect = models.FloatField(default=0)
+    adaptation_risk = models.FloatField(default=0)
+    stagnation_risk = models.FloatField(default=0)
+    target_markets = models.JSONField(default=list, blank=True)
+    summary_json = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "projection_aggregates"
+
+
+class OpportunityAggregate(models.Model):
+    player = models.OneToOneField(Player, on_delete=models.CASCADE, related_name="opportunity_aggregate")
+    source_category = models.CharField(max_length=30, blank=True, default="")
+    suggested_move = models.CharField(max_length=160, blank=True)
+    target_clubs = models.JSONField(default=list, blank=True)
+    target_leagues = models.JSONField(default=list, blank=True)
+    contract_opportunity = models.CharField(max_length=120, blank=True)
+    commercial_thesis = models.TextField(blank=True)
+    timing_summary = models.CharField(max_length=120, blank=True)
+    main_risk = models.TextField(blank=True)
+    main_opportunity = models.TextField(blank=True)
+    summary_json = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "opportunity_aggregates"
+
+
 class PerformanceMetrics(models.Model):
     player = models.OneToOneField(Player, on_delete=models.CASCADE, primary_key=True, related_name="performance_metrics", db_column="player_id")
     xg = models.FloatField(default=0)
@@ -284,6 +462,30 @@ class ProgressTracking(models.Model):
     class Meta:
         db_table = "progress_tracking"
         ordering = ["metric", "id"]
+
+
+class ScenarioLab(models.Model):
+    """
+    Stores manual scenario snapshots outside of the executive dashboard.
+    Dashboard should only read consolidated intelligence, while scenario work
+    remains operational and auditable here.
+    """
+
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name="scenario_lab_entries", db_column="player_id")
+    snapshot_date = models.DateField()
+    current_value = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    performance_score = models.FloatField(null=True, blank=True)
+    market_score = models.FloatField(null=True, blank=True)
+    marketing_score = models.FloatField(null=True, blank=True)
+    behavior_score = models.FloatField(null=True, blank=True)
+    valuation_score = models.FloatField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scenario_lab"
+        ordering = ["-snapshot_date", "-id"]
 
 
 class OnBallEvent(models.Model):
@@ -414,6 +616,11 @@ class LivePlayerEvaluation(models.Model):
 
 class DataSourceLog(models.Model):
     class SourceType(models.TextChoices):
+        INTERNAL_MANUAL = "internal_manual", "Manual interno"
+        BASE44_REGISTRY = "base44_registry", "Base44 Registry"
+        IMPORTED_CSV = "imported_csv", "CSV importado"
+        GENERATED_BY_HBX = "generated_by_hbx", "Gerado pelo HBX"
+        AI_INTERPRETATION = "ai_interpretation", "Interpretacao por IA"
         MANUAL = "manual", "Manual"
         MATCH_ANALYSIS = "match_analysis", "Match Analysis"
         HBX_VALUE = "hbx_value", "HBX Value"
@@ -443,6 +650,15 @@ class AthleteSnapshot(models.Model):
     data_confidence_score = models.FloatField(default=50)
     identity_payload = models.JSONField(default=dict, blank=True)
     career_payload = models.JSONField(default=dict, blank=True)
+    profile_summary_json = models.JSONField(default=dict, blank=True)
+    team_context_summary_json = models.JSONField(default=dict, blank=True)
+    performance_summary_json = models.JSONField(default=dict, blank=True)
+    behavioral_summary_json = models.JSONField(default=dict, blank=True)
+    market_summary_json = models.JSONField(default=dict, blank=True)
+    marketing_summary_json = models.JSONField(default=dict, blank=True)
+    projection_summary_json = models.JSONField(default=dict, blank=True)
+    opportunity_summary_json = models.JSONField(default=dict, blank=True)
+    hbx_score_summary_json = models.JSONField(default=dict, blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

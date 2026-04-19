@@ -25,7 +25,7 @@
         <section class="hero-card">
             <span class="pill">Data</span>
             <h1>Operação de dados e integrações</h1>
-            <p>Concentre aqui as rotinas operacionais do sistema: importação, template, base estrutural e evolução do acervo de dados.</p>
+            <p>Esta área passa a ser a camada oficial de ingestão do Athlete360: entrada, rastreabilidade de origem, destino no core e preparação das integrações externas.</p>
             <div class="actions">
                 <a class="button button-primary" href="{% url 'player-upload' %}?lang={{ lang }}">Importar CSV</a>
                 <a class="button button-secondary" href="{% url 'player-template' %}?lang={{ lang }}">Baixar template</a>
@@ -50,12 +50,117 @@
         <section class="grid chart-grid">
             <article class="panel">
                 <h2>Fluxo operacional</h2>
-                <p>Use esta área para manter a base preparada antes da inteligência. O objetivo é separar atividades operacionais do fluxo principal de análise e tomada de decisão.</p>
+                <p>CSV, inputs internos, Match Analysis, Go Carriera e futuras fontes externas deixam de alimentar páginas isoladas e passam a apontar para o núcleo oficial do atleta.</p>
             </article>
             <article class="panel">
                 <h2>Próximas integrações</h2>
-                <p>Este módulo é o ponto natural para receber conectores de fontes externas, automação de ingestão e governança da base de atletas, clubes e competições.</p>
+                <p>Base44 e Go Carriera agora têm alvo definido dentro da arquitetura: identidade, contexto competitivo, snapshots e agregados oficiais do Athlete360.</p>
             </article>
+        </section>
+
+        <section class="panel" style="margin-top: 20px;">
+            <h2>Athlete360 Ingestion Control</h2>
+            <p style="color: var(--muted);">Esta camada define de onde o dado vem, para onde ele entra no sistema e qual módulo passa a consumi-lo como fonte oficial.</p>
+            <div class="live-statline">
+                <div class="stat-card">
+                    <span>Athlete360 prontos</span>
+                    <strong>{{ data_hub_payload.coverage.athlete360_ready }}/{{ data_hub_payload.coverage.athletes }}</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Snapshots</span>
+                    <strong>{{ data_hub_payload.coverage.snapshots_ready }}</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Behavior stream ativo</span>
+                    <strong>{{ data_hub_payload.coverage.behavioral_stream_ready }}</strong>
+                </div>
+                <div class="stat-card">
+                    <span>Última coleta</span>
+                    <strong>{% if data_hub_payload.latest_activity.exists %}{{ data_hub_payload.latest_activity.source_type }}{% else %}-{% endif %}</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" style="margin-top: 20px;">
+            <h2>Source Of Truth Por Origem</h2>
+            <div class="progress-stack">
+                {% for item in data_hub_payload.ingestion_targets %}
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">{{ item.name }}</div>
+                            <div class="progress-values">
+                                <span>Status: <strong>{{ item.status }}</strong></span>
+                                <span>Registros: {{ item.records }}</span>
+                                <span>Destino: {{ item.target }}</span>
+                            </div>
+                        </div>
+                        <div style="color: var(--muted); margin-top: 8px;">{{ item.notes }}</div>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="grid chart-grid" style="margin-top: 20px;">
+            <article class="panel">
+                <h2>Preparação Base44</h2>
+                <p style="color: var(--muted); margin-top: 0;">O destino oficial do Base44 será a camada de identidade global e contexto competitivo.</p>
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label>Entrada prevista</label>
+                        <div class="field-input" style="display:flex; align-items:center;">AthleteIdentity + Athlete360Core</div>
+                    </div>
+                    <div class="field-group">
+                        <label>Contexto tático</label>
+                        <div class="field-input" style="display:flex; align-items:center;">TeamContextSnapshot</div>
+                    </div>
+                    <div class="field-group">
+                        <label>Status</label>
+                        <div class="field-input" style="display:flex; align-items:center;">Ready for connector</div>
+                    </div>
+                    <div class="field-group">
+                        <label>Traço de origem</label>
+                        <div class="field-input" style="display:flex; align-items:center;">base44_registry</div>
+                    </div>
+                </div>
+            </article>
+            <article class="panel">
+                <h2>Preparação Go Carriera</h2>
+                <p style="color: var(--muted); margin-top: 0;">O destino oficial do Go Carriera já está alinhado com comportamento, hábito e prontidão.</p>
+                <div class="form-grid">
+                    <div class="field-group">
+                        <label>Entrada prevista</label>
+                        <div class="field-input" style="display:flex; align-items:center;">GoCarrieraCheckIn</div>
+                    </div>
+                    <div class="field-group">
+                        <label>Agregado oficial</label>
+                        <div class="field-input" style="display:flex; align-items:center;">BehavioralAggregate</div>
+                    </div>
+                    <div class="field-group">
+                        <label>Snapshot oficial</label>
+                        <div class="field-input" style="display:flex; align-items:center;">BehaviorSnapshot</div>
+                    </div>
+                    <div class="field-group">
+                        <label>Traço de origem</label>
+                        <div class="field-input" style="display:flex; align-items:center;">go_carriera</div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section class="panel" style="margin-top: 20px;">
+            <h2>Regras De Orquestração</h2>
+            <div class="progress-stack">
+                {% for rule in data_hub_payload.orchestration_rules %}
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">Regra</div>
+                            <div class="progress-values">
+                                <span>{{ rule }}</span>
+                            </div>
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
         </section>
     </main>
 </div>

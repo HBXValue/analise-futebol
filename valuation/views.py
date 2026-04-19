@@ -17,15 +17,21 @@ from valuation.ai_service import generate_ai_dashboard_insight, get_cached_ai_da
 from valuation.constants import get_position_group
 from valuation.forms import AnalystNoteForm, AthleteCareerEntryForm, CSVUploadForm, ComparisonForm, DevelopmentPlanForm, GoCarrieraCheckInForm, LiveAnalysisEventForm, LiveAnalysisSessionForm, LoginForm, OnBallEventForm, PlayerValuationForm, ProgressTrackingForm, SignUpForm, SnapshotSimulationForm, UpliftSimulationForm
 from valuation.i18n import LANGUAGES, get_language, get_translations, tr
-from valuation.models import CareerIntelligenceCase, LiveAnalysisSession, LivePlayerEvaluation, Player, User
+from valuation.models import CareerIntelligenceCase, DataSourceLog, LiveAnalysisSession, LivePlayerEvaluation, Player, ScenarioLab, User
 from valuation.ui_context import build_global_player_context
 from valuation.services import (
     build_dashboard_payload,
+    build_dashboard_executive_payload,
+    build_athlete360_overview_payload,
+    Athlete360Orchestrator,
     build_comparative_intelligence,
     build_projection_intelligence,
     build_opportunity_intelligence,
-    build_report_audience_packages,
+    build_reports_executive_payload,
     build_hbx_seed_from_profile,
+    build_data_hub_payload,
+    build_match_analysis_payload,
+    build_market_intelligence_payload,
     build_growth_insights,
     build_behavioral_intelligence,
     calculate_scores,
@@ -65,6 +71,7 @@ from valuation.services import (
     save_on_ball_event,
     save_player_bundle,
     save_progress_tracking,
+    save_scenario_lab_entry,
     simulate_uplift,
     sync_live_report_to_integrated_modules,
     sync_integrated_player_modules,
@@ -543,6 +550,7 @@ def dashboard_view(request):
     )
     for player in players:
         sync_integrated_player_modules(player)
+        Athlete360Orchestrator.sync(player, source=DataSourceLog.SourceType.GENERATED_BY_HBX)
     comparison_form = ComparisonForm(request.GET or None, players=players)
     selected_ids = []
     if comparison_form.is_valid():
@@ -557,16 +565,12 @@ def dashboard_view(request):
             featured_player = None
     if featured_player is None:
         featured_player = selected_players[0] if selected_players else (players[0] if players else None)
-    snapshot_form = SnapshotSimulationForm(lang=lang, player=featured_player) if featured_player else None
     uplift_form = UpliftSimulationForm(request.POST or None, lang=lang, player=featured_player) if featured_player else None
-    development_plan_form = DevelopmentPlanForm(lang=lang) if featured_player else None
-    progress_tracking_form = ProgressTrackingForm(lang=lang) if featured_player else None
     uplift_result = None
     if request.method == "POST" and request.POST.get("form_name") == "uplift" and featured_player and uplift_form.is_valid():
         uplift_result = simulate_uplift(featured_player, uplift_form.cleaned_data, lang)
 
     players_payload = build_dashboard_payload(players, lang)
-    featured_payload = next((item for item in players_payload if featured_player and item["player"].id == featured_player.id), None)
     ai_dashboard_insight = (
         get_cached_ai_dashboard_insight(featured_player, lang, int(compare_window), scope="dashboard")
         if featured_player else None
@@ -576,7 +580,7 @@ def dashboard_view(request):
         "current_user": current_user,
         "players": players,
         "players_payload": players_payload,
-        "featured_payload": featured_payload,
+        "dashboard_executive_payload": build_dashboard_executive_payload(featured_player, lang, int(compare_window)) if featured_player else None,
         "comparison_form": comparison_form,
         "featured_player": featured_player,
         "selected_players": selected_players,
@@ -596,10 +600,7 @@ def dashboard_view(request):
         "projection_periods": ["3", "6", "12", "24"],
         "compare_window": compare_window,
         "compare_windows": ["30", "60", "90", "180"],
-        "snapshot_form": snapshot_form,
         "uplift_form": uplift_form,
-        "development_plan_form": development_plan_form,
-        "progress_tracking_form": progress_tracking_form,
         "uplift_result": uplift_result,
         "lang": lang,
         "t": get_translations(lang),
@@ -653,7 +654,7 @@ def live_analysis_view(request):
     current_user = get_current_user(request)
     players = list(
         Player.objects.filter(user=current_user)
-        .select_related("division_reference__country", "club_reference")
+        .select_related("division_reference__country", "club_reference", "athlete360_core", "performance_aggregate")
         .order_by("name")
     )
     for player in players:
@@ -691,6 +692,7 @@ def live_analysis_view(request):
         payload["informacoes_gerais"]["player_id"] = str(selected_report.player_id or "")
     elif selected_player:
         payload = _hydrate_payload_from_player(payload, selected_player)
+    match_analysis_payload = build_match_analysis_payload(selected_player, lang) if selected_player else None
     context = {
             "current_user": current_user,
             "players": players,
@@ -710,6 +712,7 @@ def live_analysis_view(request):
                 for player in players
             ],
             "selected_player": selected_player,
+            "match_analysis_payload": match_analysis_payload,
             "reports": reports,
             "selected_report": selected_report,
             "payload_json": json.dumps(payload, ensure_ascii=True),
@@ -745,6 +748,9 @@ def hbx_value_score_view(request):
             "marketing_metrics",
             "behavior_metrics",
             "hbx_value_profile",
+            "athlete360_core",
+            "market_aggregate",
+            "marketing_aggregate",
             "division_reference__country",
             "club_reference",
         )
@@ -760,6 +766,9 @@ def hbx_value_score_view(request):
                 "marketing_metrics",
                 "behavior_metrics",
                 "hbx_value_profile",
+                "athlete360_core",
+                "market_aggregate",
+                "marketing_aggregate",
                 "division_reference__country",
                 "club_reference",
             ),
@@ -914,6 +923,7 @@ def hbx_value_score_view(request):
         return redirect(f"{reverse('hbx-value-score')}?player={selected_player.id}&lang={lang}")
 
     selected_hbx_profile = get_hbx_value_profile(selected_player) if selected_player else None
+    market_intelligence_payload = build_market_intelligence_payload(selected_player, lang) if selected_player else None
     ai_dashboard_insight = (
         get_cached_ai_dashboard_insight(selected_player, lang, 90, scope="market")
         if selected_player else None
@@ -936,6 +946,7 @@ def hbx_value_score_view(request):
             "players": players,
             "selected_player": selected_player,
             "selected_hbx_profile": selected_hbx_profile,
+            "market_intelligence_payload": market_intelligence_payload,
             "ai_dashboard_insight": ai_dashboard_insight,
             "selected_seed_json": json.dumps(selected_seed or {}, ensure_ascii=True),
             "player_seed_map_json": json.dumps(player_seed_map, ensure_ascii=True),
@@ -984,12 +995,8 @@ def reports_view(request):
         selected_player = players[0]
     if audience not in {"athlete", "agent", "club", "consultancy"}:
         audience = "consultancy"
-    selected_case = (
-        CareerIntelligenceCase.objects.filter(player=selected_player).order_by("-updated_at", "-id").first()
-        if selected_player else None
-    )
-    audience_packages = (
-        build_report_audience_packages(selected_player, lang, int(compare_window))
+    reports_executive_payload = (
+        build_reports_executive_payload(selected_player, lang, int(compare_window))
         if selected_player else None
     )
     context = {
@@ -997,9 +1004,8 @@ def reports_view(request):
         "players": players,
         "cases": cases,
         "selected_player": selected_player,
-        "selected_case": selected_case,
         "selected_audience": audience,
-        "audience_packages": audience_packages,
+        "reports_executive_payload": reports_executive_payload,
         "audience_options": [
             ("athlete", "Atleta"),
             ("agent", "Agente"),
@@ -1009,7 +1015,7 @@ def reports_view(request):
         "ai_dashboard_insight": get_cached_ai_dashboard_insight(selected_player, lang, int(compare_window), scope="reports") if selected_player else None,
         "compare_window": compare_window,
         "compare_windows": ["30", "60", "90", "180"],
-        "longitudinal_bi": longitudinal_bi_payload(selected_player, lang, int(compare_window)) if selected_player else None,
+        "longitudinal_bi": reports_executive_payload["report_context"]["longitudinal"] if reports_executive_payload else None,
         "longitudinal_delta_chart": longitudinal_delta_chart_data(selected_player, lang, int(compare_window)) if selected_player else None,
         "lang": lang,
         "t": get_translations(lang),
@@ -1026,11 +1032,13 @@ def data_view(request):
     divisions = Division.objects.filter(is_active=True).count()
     clubs = Club.objects.filter(status=Club.Status.ACTIVE).count()
     athletes = Player.objects.filter(user=current_user).count()
+    data_hub_payload = build_data_hub_payload(current_user)
     context = {
         "current_user": current_user,
         "division_count": divisions,
         "club_count": clubs,
         "athlete_count": athletes,
+        "data_hub_payload": data_hub_payload,
         "lang": lang,
         "t": get_translations(lang),
         "languages": LANGUAGES,
@@ -1118,6 +1126,40 @@ def live_analysis_session_view(request):
 
 
 @login_required
+@require_http_methods(["GET"])
+def player_operations_view(request, player_id):
+    lang = get_language(request)
+    current_user = get_current_user(request)
+    player = get_object_or_404(
+        Player.objects.select_related(
+            "performance_metrics",
+            "market_metrics",
+            "marketing_metrics",
+            "behavior_metrics",
+            "division_reference__country",
+            "club_reference",
+        ).prefetch_related("development_plans", "progress_tracking", "scenario_lab_entries"),
+        pk=player_id,
+        user=current_user,
+    )
+    sync_integrated_player_modules(player)
+    Athlete360Orchestrator.sync(player, source=DataSourceLog.SourceType.GENERATED_BY_HBX)
+    context = {
+        "current_user": current_user,
+        "player": player,
+        "development_plan_form": DevelopmentPlanForm(lang=lang),
+        "progress_tracking_form": ProgressTrackingForm(lang=lang),
+        "snapshot_form": SnapshotSimulationForm(lang=lang, player=player),
+        "scenario_lab_entries": list(player.scenario_lab_entries.all()[:8]),
+        "lang": lang,
+        "t": get_translations(lang),
+        "languages": LANGUAGES,
+    }
+    context.update(build_global_player_context(request, current_user, player))
+    return render(request, "valuation/player_operations.html", context)
+
+
+@login_required
 @require_http_methods(["POST"])
 def player_snapshot_view(request, player_id):
     lang = get_language(request)
@@ -1125,13 +1167,13 @@ def player_snapshot_view(request, player_id):
     player = get_object_or_404(Player, pk=player_id, user=current_user)
     form = SnapshotSimulationForm(request.POST, lang=lang, player=player)
     if form.is_valid():
-        save_manual_history_snapshot(player, form.cleaned_data)
-        messages.success(request, tr(lang, "snapshot_saved"))
+        save_scenario_lab_entry(player, form.cleaned_data)
+        messages.success(request, "Cenario salvo no Scenario Lab e integrado ao historico do atleta.")
     else:
         for field_errors in form.errors.values():
             for error in field_errors:
                 messages.error(request, error)
-    return redirect(f"{reverse('dashboard')}?lang={lang}")
+    return redirect(f"{reverse('player-operations', args=[player.id])}?lang={lang}")
 
 
 @login_required
@@ -1165,7 +1207,7 @@ def player_plan_view(request, player_id):
         for field_errors in form.errors.values():
             for error in field_errors:
                 messages.error(request, error)
-    return redirect(f"{reverse('dashboard')}?lang={lang}")
+    return redirect(f"{reverse('player-operations', args=[player.id])}?lang={lang}")
 
 
 @login_required
@@ -1182,7 +1224,7 @@ def player_progress_view(request, player_id):
         for field_errors in form.errors.values():
             for error in field_errors:
                 messages.error(request, error)
-    return redirect(f"{reverse('dashboard')}?lang={lang}")
+    return redirect(f"{reverse('player-operations', args=[player.id])}?lang={lang}")
 
 
 @login_required
@@ -1252,10 +1294,19 @@ def player_edit_view(request, player_id):
             "market_metrics",
             "marketing_metrics",
             "behavior_metrics",
+            "athlete360_core",
+            "performance_aggregate",
+            "behavioral_aggregate",
+            "market_aggregate",
+            "marketing_aggregate",
+            "projection_aggregate",
+            "opportunity_aggregate",
         ),
         pk=player_id,
         user=current_user,
     )
+    Athlete360Orchestrator.sync(player, source=DataSourceLog.SourceType.GENERATED_BY_HBX)
+    player.refresh_from_db()
     form = PlayerValuationForm(request.POST or None, player=player, lang=lang)
     career_form = AthleteCareerEntryForm(lang=lang)
     go_carriera_form = GoCarrieraCheckInForm(lang=lang)
@@ -1290,6 +1341,15 @@ def player_edit_view(request, player_id):
         "comparative_intelligence": build_comparative_intelligence(player, lang=lang, compare_window_days=90),
         "projection_intelligence": build_projection_intelligence(player, lang=lang, period="12"),
         "opportunity_intelligence": build_opportunity_intelligence(player, lang=lang, period="12"),
+        "athlete360_overview_payload": build_athlete360_overview_payload(player, lang=lang),
+        "athlete360_core": getattr(player, "athlete360_core", None),
+        "team_context_current": player.team_context_snapshots.first(),
+        "performance_aggregate": getattr(player, "performance_aggregate", None),
+        "behavioral_aggregate": getattr(player, "behavioral_aggregate", None),
+        "market_aggregate": getattr(player, "market_aggregate", None),
+        "marketing_aggregate": getattr(player, "marketing_aggregate", None),
+        "projection_aggregate": getattr(player, "projection_aggregate", None),
+        "opportunity_aggregate": getattr(player, "opportunity_aggregate", None),
         "latest_score_snapshot": player.score_snapshots.first(),
         "latest_projection_snapshot": player.projection_snapshots.first(),
         "latest_behavior_snapshot": player.behavior_snapshots.first(),

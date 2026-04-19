@@ -20,8 +20,10 @@ from valuation.models import (
     AthleteAIInsight,
     AthleteCareerEntry,
     AthleteContract,
+    Athlete360Core,
     GoCarrieraCheckIn,
     BehaviorMetrics,
+    BehavioralAggregate,
     BehaviorSnapshot,
     CareerIntelligenceCase,
     CareerPrognosis,
@@ -36,8 +38,10 @@ from valuation.models import (
     LiveAnalysisSession,
     LivePlayerEvaluation,
     MarketMetrics,
+    MarketAggregate,
     MarketSnapshot,
     MarketingMetrics,
+    MarketingAggregate,
     MarketingSnapshot,
     OnBallEvent,
     PerformanceMetrics,
@@ -45,8 +49,13 @@ from valuation.models import (
     Player,
     PlayerHistory,
     ProjectionSnapshot,
+    ProjectionAggregate,
     ProgressTracking,
+    ScenarioLab,
     ScoreSnapshot,
+    TeamContextSnapshot,
+    PerformanceAggregate,
+    OpportunityAggregate,
     AthleteTransfer,
     User,
 )
@@ -672,8 +681,9 @@ class ValuationViewsTests(TestCase):
             reverse("player-snapshot", args=[player.id]),
             {"date": "2026-03-01", "current_value": "2700000.00", "valuation_score": "68"},
         )
-        self.assertRedirects(response, f"{reverse('dashboard')}?lang=pt")
+        self.assertRedirects(response, f"{reverse('player-operations', args=[player.id])}?lang=pt")
         self.assertTrue(PlayerHistory.objects.filter(player=player, date="2026-03-01").exists())
+        self.assertTrue(ScenarioLab.objects.filter(player=player, snapshot_date="2026-03-01").exists())
 
     def test_logged_user_can_create_intervention_records(self):
         user = User.objects.create(email="coach@club.com", password_hash=make_password("secretpass"))
@@ -720,6 +730,31 @@ class ValuationViewsTests(TestCase):
         self.assertTrue(AnalystNote.objects.filter(player=player).exists())
         self.assertTrue(DevelopmentPlan.objects.filter(player=player).exists())
         self.assertTrue(ProgressTracking.objects.filter(player=player).exists())
+
+    def test_player_operations_page_renders(self):
+        user = User.objects.create(email="ops@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Andre Matos",
+            age=22,
+            position="Forward",
+            current_value=Decimal("2100000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Goias",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("player-operations", args=[player.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Athlete Operations")
+        self.assertContains(response, "Scenario Lab")
+        self.assertContains(response, "Voltar ao Dashboard")
 
     def test_logged_user_can_create_on_ball_event(self):
         user = User.objects.create(email="analyst2@club.com", password_hash=make_password("secretpass"))
@@ -892,6 +927,32 @@ class ValuationViewsTests(TestCase):
         response = self.client.get(reverse("live-analysis"))
         self.assertEqual(response.status_code, 200)
 
+    def test_live_analysis_shows_consolidated_match_context_for_selected_athlete(self):
+        user = User.objects.create(email="live-context@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Joao Pedro",
+            age=21,
+            position="Atacante",
+            current_value=Decimal("1300000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Goias",
+        )
+        PerformanceMetrics.objects.create(player=player, xg=0.31, xa=0.14, passes_pct=78, dribbles_pct=64, tackles_pct=30, final_third_recoveries=3)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        save_player_history_snapshot(player, date(2026, 4, 15))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(f"{reverse('live-analysis')}?athlete={player.id}&lang=pt")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Athlete360 Match Context")
+        self.assertContains(response, "Team Context oficial")
+        self.assertContains(response, "Resumo para análise da partida")
+
     def test_player_edit_page_renders_athlete_360_tabs(self):
         user = User.objects.create(email="athlete360@club.com", password_hash=make_password("secretpass"))
         player = Player.objects.create(
@@ -918,6 +979,45 @@ class ValuationViewsTests(TestCase):
         self.assertContains(response, "Timeline 360")
         self.assertContains(response, "Behavior")
         self.assertContains(response, "Carreira")
+        self.assertContains(response, "Overview")
+        self.assertContains(response, "Team Context")
+        self.assertContains(response, "Athlete360 Executive Summary")
+        self.assertContains(response, "Team context oficial")
+
+    def test_athlete360_core_and_aggregates_are_consolidated(self):
+        user = User.objects.create(email="core360@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Marcio Lemos",
+            public_name="Marcio",
+            age=20,
+            position="Winger",
+            current_value=Decimal("1400000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Avaí",
+            category=Player.Category.PROFESSIONAL,
+            squad_status=Player.SquadStatus.STARTER,
+            contract_months_remaining=11,
+        )
+        PerformanceMetrics.objects.create(player=player, xg=0.22, xa=0.17, passes_pct=78, dribbles_pct=70, tackles_pct=31, high_intensity_distance=9800, final_third_recoveries=4)
+        MarketMetrics.objects.create(player=player, annual_growth=16, club_interest=68, league_score=70, age_factor=82, club_reputation=64)
+        MarketingMetrics.objects.create(player=player, followers=15000, engagement=5.2, media_mentions=18, sponsorships=1, sentiment_score=73)
+        BehaviorMetrics.objects.create(player=player, conscientiousness=7, adaptability=8, resilience=7, deliberate_practice=8, executive_function=7, leadership=6)
+        save_player_history_snapshot(player, date(2026, 4, 15))
+
+        core = Athlete360Core.objects.get(player=player)
+        self.assertEqual(core.current_club, "Avaí")
+        self.assertEqual(core.primary_position, "Winger")
+        self.assertTrue(PerformanceAggregate.objects.filter(player=player).exists())
+        self.assertTrue(BehavioralAggregate.objects.filter(player=player).exists())
+        self.assertTrue(MarketAggregate.objects.filter(player=player).exists())
+        self.assertTrue(MarketingAggregate.objects.filter(player=player).exists())
+        self.assertTrue(ProjectionAggregate.objects.filter(player=player).exists())
+        self.assertTrue(OpportunityAggregate.objects.filter(player=player).exists())
+        self.assertTrue(TeamContextSnapshot.objects.filter(player=player).exists())
+        snapshot = AthleteSnapshot.objects.filter(player=player).first()
+        self.assertIn("club_name", snapshot.team_context_summary_json)
+        self.assertIn("final_score", snapshot.hbx_score_summary_json)
 
     def test_player_career_entry_can_be_saved(self):
         user = User.objects.create(email="career-entry@club.com", password_hash=make_password("secretpass"))
@@ -1220,6 +1320,33 @@ class ValuationViewsTests(TestCase):
         self.assertContains(response, "Clubes alvo")
         self.assertContains(response, "Riscos da movimentacao")
 
+    def test_data_hub_renders_ingestion_control(self):
+        user = User.objects.create(email="data@club.com", password_hash=make_password("secretpass"))
+        player = Player.objects.create(
+            user=user,
+            name="Nicolas Souza",
+            age=20,
+            position="Midfielder",
+            current_value=Decimal("1200000.00"),
+            league_level="Brazil Serie B",
+            club_origin="Goias",
+        )
+        PerformanceMetrics.objects.create(player=player)
+        MarketMetrics.objects.create(player=player)
+        MarketingMetrics.objects.create(player=player)
+        BehaviorMetrics.objects.create(player=player)
+        save_player_history_snapshot(player, date(2026, 4, 15))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(reverse("data"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Athlete360 Ingestion Control")
+        self.assertContains(response, "Source Of Truth Por Origem")
+        self.assertContains(response, "Preparação Base44")
+        self.assertContains(response, "Preparação Go Carriera")
+
     def test_reports_view_supports_audience_packages(self):
         user = User.objects.create(email="reports-audience@club.com", password_hash=make_password("secretpass"))
         player = Player.objects.create(
@@ -1358,6 +1485,8 @@ class ValuationViewsTests(TestCase):
         self.assertContains(response, "Buscar YouTube Data API")
         self.assertContains(response, "Buscar TikTok")
         self.assertNotContains(response, "Escopo do MVP")
+        self.assertContains(response, "Contexto do atleta")
+        self.assertContains(response, "Mercado atual")
 
     def test_hbx_value_score_post_persists_profile_for_player(self):
         user = User.objects.create(email="hbx-save@club.com", password_hash=make_password("secretpass"))
@@ -1949,6 +2078,20 @@ class CareerIntelligenceModuleTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Performance Intelligence")
         self.assertContains(response, "Cases in progress")
+
+    def test_career_list_shows_consolidated_performance_payload_for_selected_athlete(self):
+        CareerIntelligenceCase.objects.create(
+            user=self.user,
+            player=self.player,
+            athlete_name="Bruno Alves",
+            position_primary="Atacante",
+            current_club="Avai",
+        )
+        response = self.client.get(f"{reverse('career-case-list')}?lang=pt&athlete={self.player.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Executive Performance View")
+        self.assertContains(response, "Athlete360 performance summary")
+        self.assertContains(response, "Integrated status")
 
     def test_completion_requires_core_sections(self):
         case = CareerIntelligenceCase.objects.create(

@@ -493,6 +493,7 @@ class SnapshotSimulationForm(forms.Form):
     marketing_score = forms.FloatField(min_value=0, max_value=100, required=False)
     behavior_score = forms.FloatField(min_value=0, max_value=100, required=False)
     valuation_score = forms.FloatField(min_value=0, max_value=100, required=False)
+    notes = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
 
     def __init__(self, *args, **kwargs):
         lang = kwargs.pop("lang", "pt")
@@ -507,17 +508,20 @@ class SnapshotSimulationForm(forms.Form):
         self.fields["marketing_score"].label = tr(lang, "marketing_metrics")
         self.fields["behavior_score"].label = tr(lang, "behavior_metrics")
         self.fields["valuation_score"].label = tr(lang, "valuation_score")
+        self.fields["notes"].label = "Notas do cenario"
         self.fields["current_value"].widget.attrs["placeholder"] = "Ex.: 4200000"
         self.fields["performance_score"].widget.attrs["placeholder"] = "Ex.: 74"
         self.fields["market_score"].widget.attrs["placeholder"] = "Ex.: 68"
         self.fields["marketing_score"].widget.attrs["placeholder"] = "Ex.: 57"
         self.fields["behavior_score"].widget.attrs["placeholder"] = "Ex.: 81"
         self.fields["valuation_score"].widget.attrs["placeholder"] = "Ex.: 72"
+        self.fields["notes"].widget.attrs["placeholder"] = "Ex.: cenario de evolucao apos ganho de minutos e melhora do score de performance."
         self.fields["performance_score"].help_text = "Padrao de 0 a 100. Se deixar em branco, o sistema usa o valor atual."
         self.fields["market_score"].help_text = "Padrao de 0 a 100. Use a nota esperada para este snapshot."
         self.fields["marketing_score"].help_text = "Padrao de 0 a 100. Considere o alcance e a presenca publica do atleta."
         self.fields["behavior_score"].help_text = "Padrao de 0 a 100. Reflita a resposta mental e comportamental esperada."
         self.fields["valuation_score"].help_text = "Padrao de 0 a 100. Use apenas se quiser simular uma nota consolidada manual."
+        self.fields["notes"].help_text = "Documente a hipotese do cenario para manter rastreabilidade fora do dashboard."
         if player:
             self.initial["current_value"] = player.current_value
 

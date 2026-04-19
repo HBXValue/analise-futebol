@@ -1,0 +1,161 @@
+{% extends "valuation/base.html" %}
+{% block title %}Athlete Operations | HBX{% endblock %}
+{% block body %}
+<div class="shell">
+    <aside class="sidebar">
+        <div class="brand">HBX<small>{{ t.valuation_system }}</small></div>
+        <div class="nav">
+            <a href="{% url 'dashboard' %}?lang={{ lang }}&featured_player={{ player.id }}">{{ t.dashboard }}</a>
+            <a href="{% url 'player-create' %}?lang={{ lang }}">Athletes</a>
+            <a href="{% url 'live-analysis' %}?lang={{ lang }}">Match Analysis</a>
+            <a href="{% url 'career-case-list' %}?lang={{ lang }}">Performance Intelligence</a>
+            <a href="{% url 'hbx-value-score' %}?lang={{ lang }}">Market Intelligence</a>
+            <a href="{% url 'reports' %}?lang={{ lang }}">Reports</a>
+            <a href="{% url 'data' %}?lang={{ lang }}">Data</a>
+            <a href="/admin/">{{ t.admin }}</a>
+            <a href="{% url 'logout' %}">{{ t.logout }}</a>
+        </div>
+        <div class="lang-switch">
+            {% for code, name in languages.items %}
+                <a href="?lang={{ code }}" class="{% if lang == code %}active{% endif %}">{{ name }}</a>
+            {% endfor %}
+        </div>
+    </aside>
+    <main class="content">
+        {% include "valuation/_global_player_bar.html" %}
+        {% if messages %}
+            <div class="messages">
+                {% for message in messages %}
+                    <div class="message {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <section class="hero-card">
+            <span class="pill">Athlete Operations</span>
+            <h1>{{ player.name }}</h1>
+            <p>Ambiente operacional para registrar plano de desenvolvimento, acompanhamento e cenarios. O Dashboard permanece como camada executiva de leitura.</p>
+            <div class="actions">
+                <a class="button button-secondary" href="{% url 'dashboard' %}?lang={{ lang }}&featured_player={{ player.id }}">Voltar ao Dashboard</a>
+                <a class="button button-secondary" href="{% url 'player-edit' player.id %}?lang={{ lang }}">Abrir Athlete 360</a>
+            </div>
+        </section>
+
+        <section class="grid chart-grid" style="margin-top: 20px;">
+            <article class="panel">
+                <h2>{{ t.action_plan }}</h2>
+                <p>Use objetivos claros e metricas comparaveis. Scores internos seguem escala de 0 a 100, e dados de performance/jogo devem ser considerados por 90 minutos.</p>
+                <form method="post" action="{% url 'player-plan' player.id %}?lang={{ lang }}">
+                    {% csrf_token %}
+                    <div class="form-grid">
+                        {% for field in development_plan_form %}
+                            <div class="field-group">
+                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<small style="color: var(--muted);">{{ field.help_text }}</small>{% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="actions">
+                        <button class="button button-primary" type="submit">{{ t.save_plan }}</button>
+                    </div>
+                </form>
+                <table class="player-table">
+                    <tbody>
+                    {% for plan in player.development_plans.all|slice:":6" %}
+                        <tr>
+                            <td>
+                                <strong>{{ plan.goal }}</strong><br>
+                                <span style="color: var(--muted);">{{ plan.target_metric }} -> {{ plan.target_value }} | {{ t.deadline }}: {{ plan.deadline|date:"d/m/Y" }}</span>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td>{{ t.no_plans }}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </article>
+
+            <article class="panel">
+                <h2>{{ t.evolution_followup }}</h2>
+                <p>Mantenha sempre o mesmo criterio de medicao. Para scores use 0 a 100; para dados de jogo, acompanhe os numeros por 90 minutos.</p>
+                <form method="post" action="{% url 'player-progress' player.id %}?lang={{ lang }}">
+                    {% csrf_token %}
+                    <div class="form-grid">
+                        {% for field in progress_tracking_form %}
+                            <div class="field-group">
+                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<small style="color: var(--muted);">{{ field.help_text }}</small>{% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="actions">
+                        <button class="button button-primary" type="submit">{{ t.save_progress }}</button>
+                    </div>
+                </form>
+                <div class="progress-stack">
+                    {% for item in player.progress_tracking.all|slice:":6" %}
+                        <article class="progress-card">
+                            <div class="progress-meta">
+                                <div class="progress-label">{{ item.metric }}</div>
+                                <div class="progress-values">
+                                    <span>{{ t.current_value }}: {{ item.current_value }}</span>
+                                    <span>{{ t.target_value }}: {{ item.target_value }}</span>
+                                    <span>{{ t.progress }}: {{ item.progress_pct }}%</span>
+                                </div>
+                            </div>
+                            <div class="progress-rail">
+                                <div class="progress-bar target" style="left: 0; width: {{ item.progress_pct }}%;"></div>
+                            </div>
+                        </article>
+                    {% empty %}
+                        <article class="progress-card">{{ t.no_progress }}</article>
+                    {% endfor %}
+                </div>
+            </article>
+        </section>
+
+        <section class="panel" style="margin-top: 20px;">
+            <h2>Scenario Lab</h2>
+            <p>Registre snapshots hipoteticos ou alinhados a uma leitura manual. O cenario fica salvo aqui e tambem alimenta o historico consolidado do atleta.</p>
+            <form method="post" action="{% url 'player-snapshot' player.id %}?lang={{ lang }}">
+                {% csrf_token %}
+                <div class="form-grid">
+                    {% for field in snapshot_form %}
+                        <div class="field-group">
+                            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}<small style="color: var(--muted);">{{ field.help_text }}</small>{% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="actions">
+                    <button class="button button-primary" type="submit">{{ t.save_snapshot }}</button>
+                </div>
+            </form>
+
+            <div class="progress-stack" style="margin-top: 18px;">
+                {% for item in scenario_lab_entries %}
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">{{ item.snapshot_date|date:"d/m/Y" }}</div>
+                            <div class="progress-values">
+                                <span>Valor: EUR {{ item.current_value }}</span>
+                                <span>Score final: {{ item.valuation_score|default:"-" }}</span>
+                                <span>Performance: {{ item.performance_score|default:"-" }}</span>
+                                <span>Market: {{ item.market_score|default:"-" }}</span>
+                            </div>
+                        </div>
+                        {% if item.notes %}
+                            <div style="color: var(--muted); margin-top: 8px;">{{ item.notes }}</div>
+                        {% endif %}
+                    </article>
+                {% empty %}
+                    <article class="progress-card">Nenhum cenario salvo ainda.</article>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+</div>
+{% endblock %}

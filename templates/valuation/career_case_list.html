@@ -95,6 +95,43 @@
         <section class="panel">
             <h2>{{ t.career_cases_in_progress }}</h2>
             {% if selected_player %}
+                {% with perf=performance_intelligence_payload %}
+                <div class="progress-stack" style="margin-bottom: 18px;">
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">Executive Performance View</div>
+                            <div class="progress-values">
+                                <span><strong>{{ perf.identity.name }}</strong> · {{ perf.identity.position|default:"-" }}</span>
+                                <span>{{ perf.identity.club|default:"-" }} · {{ perf.identity.league|default:"-" }}</span>
+                                <span>Status: {{ perf.status_summary.executive_status }}</span>
+                                <span>Recomendação: {{ perf.status_summary.main_recommendation }}</span>
+                            </div>
+                        </div>
+                    </article>
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">Athlete360 performance summary</div>
+                            <div class="progress-values">
+                                <span>HBX Score: <strong>{{ perf.score_summary.final_score }}</strong></span>
+                                <span>xG {{ perf.performance_summary.xg|floatformat:2 }} · xA {{ perf.performance_summary.xa|floatformat:2 }}</span>
+                                <span>Passe {{ perf.performance_summary.passing|floatformat:1 }} · Drible {{ perf.performance_summary.dribbling|floatformat:1 }}</span>
+                                <span>Contextual fit: {{ perf.comparison_summary.contextual_fit_label }}</span>
+                            </div>
+                        </div>
+                    </article>
+                    <article class="progress-card">
+                        <div class="progress-meta">
+                            <div class="progress-label">Integrated status</div>
+                            <div class="progress-values">
+                                <span>Career: {% if perf.integrated_status.career.exists %}{{ perf.integrated_status.career.current_step_label }}{% else %}Sem caso{% endif %}</span>
+                                <span>Live reports: {{ perf.performance_summary.match_analysis_summary.reports_count|default:0 }}</span>
+                                <span>{% if perf.integrated_status.live.exists %}Ultimo jogo: {{ perf.integrated_status.live.competition|default:"Jogo recente" }}{% else %}Nenhuma analise ao vivo{% endif %}</span>
+                                <span>{% if perf.integrated_status.live.latest_match_summary %}{{ perf.integrated_status.live.latest_match_summary }}{% else %}Sem resumo recente de partida.{% endif %}</span>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+                {% endwith %}
                 <div class="progress-stack" style="margin-bottom: 18px;">
                     <article class="progress-card">
                         <div class="progress-meta">
