@@ -1321,6 +1321,17 @@ class ValuationViewsTests(TestCase):
         self.assertContains(response, "Clubes alvo")
         self.assertContains(response, "Riscos da movimentacao")
 
+    def test_player_create_page_shows_new_registration_state(self):
+        user = User.objects.create(email="new-athlete@club.com", password_hash=make_password("secretpass"))
+        session = self.client.session
+        session["valuation_user_id"] = user.id
+        session.save()
+
+        response = self.client.get(f"{reverse('player-create')}?lang=pt")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Novo cadastro ativo")
+        self.assertContains(response, "Você está no cadastro de novo atleta")
+
     def test_data_hub_renders_ingestion_control(self):
         user = User.objects.create(email="data@club.com", password_hash=make_password("secretpass"))
         player = Player.objects.create(

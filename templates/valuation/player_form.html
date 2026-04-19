@@ -26,13 +26,21 @@
             <h1>{{ page_title }}</h1>
             <p>{{ t.hero_text }}</p>
             <div class="actions">
-                <a class="button button-primary" href="{% url 'player-create' %}?lang={{ lang }}">Novo atleta</a>
-                {% if player %}
+                {% if not is_new_player_page %}
+                    <a class="button button-primary" href="{% url 'player-create' %}?lang={{ lang }}&fresh=1">Novo atleta</a>
                     <a class="button button-secondary" href="{% url 'player-edit' player.id %}?lang={{ lang }}">Editar atleta atual</a>
+                {% else %}
+                    <span class="button button-primary" style="pointer-events: none; opacity: 0.9;">Novo cadastro ativo</span>
                 {% endif %}
             </div>
         </section>
         <section class="panel">
+            {% if is_new_player_page %}
+                <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <strong style="display: block; margin-bottom: 6px;">Você está no cadastro de novo atleta</strong>
+                    <span style="color: var(--muted);">Preencha os dados básicos e salve. Depois você poderá voltar na edição para completar as outras abas do Athlete 360.</span>
+                </div>
+            {% endif %}
             <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(0, 224, 184, 0.08); border: 1px solid rgba(0, 224, 184, 0.2); color: var(--muted);">
                 Voce pode salvar o atleta agora com os dados basicos e voltar depois para completar performance, mercado, marketing e comportamento.
             </div>
