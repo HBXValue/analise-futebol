@@ -1331,6 +1331,8 @@ class ValuationViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Novo cadastro ativo")
         self.assertContains(response, "Você está no cadastro de novo atleta")
+        self.assertContains(response, "Passo 1")
+        self.assertContains(response, "Clube atual do atleta")
 
     def test_data_hub_renders_ingestion_control(self):
         user = User.objects.create(email="data@club.com", password_hash=make_password("secretpass"))

@@ -158,22 +158,24 @@
 
                 <div class="panel" style="margin-bottom: 24px; padding: 16px 18px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);">
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button type="button" class="button button-secondary athlete-tab-button active" data-athlete-tab-target="overview">Overview</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="profile">Perfil</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="career">Carreira</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="team-context">Team Context</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="performance">Performance</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="market">Market</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="marketing">Marketing</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="behavior">Behavior</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="comparative">Comparative</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="projection">Projection</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="opportunity">Opportunity</button>
-                        <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="timeline">Timeline</button>
+                        <button type="button" class="button button-secondary athlete-tab-button {% if not is_new_player_page %}active{% endif %}" data-athlete-tab-target="overview">Overview</button>
+                        <button type="button" class="button button-secondary athlete-tab-button {% if is_new_player_page %}active{% endif %}" data-athlete-tab-target="profile">Perfil</button>
+                        {% if player %}
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="career">Carreira</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="team-context">Team Context</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="performance">Performance</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="market">Market</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="marketing">Marketing</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="behavior">Behavior</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="comparative">Comparative</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="projection">Projection</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="opportunity">Opportunity</button>
+                            <button type="button" class="button button-secondary athlete-tab-button" data-athlete-tab-target="timeline">Timeline</button>
+                        {% endif %}
                     </div>
                 </div>
 
-                <section data-athlete-tab="overview">
+                <section data-athlete-tab="overview" {% if is_new_player_page %}style="display: none;"{% endif %}>
                     <h2 class="section-title">Overview</h2>
                     {% if player and athlete360_overview_payload %}
                     <div class="panel" style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, rgba(0, 224, 184, 0.08), rgba(255,255,255,0.03)); border: 1px solid rgba(0, 224, 184, 0.16);">
@@ -1250,7 +1252,11 @@
         button.addEventListener("click", () => activateTab(button.dataset.athleteTabTarget));
     });
 
+    {% if is_new_player_page %}
+    activateTab("profile");
+    {% else %}
     activateTab("overview");
+    {% endif %}
 })();
 
 (() => {
