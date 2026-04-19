@@ -983,6 +983,7 @@ class ValuationViewsTests(TestCase):
         self.assertContains(response, "Team Context")
         self.assertContains(response, "Athlete360 Executive Summary")
         self.assertContains(response, "Team context oficial")
+        self.assertContains(response, "Novo atleta")
 
     def test_athlete360_core_and_aggregates_are_consolidated(self):
         user = User.objects.create(email="core360@club.com", password_hash=make_password("secretpass"))

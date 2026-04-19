@@ -25,6 +25,12 @@
             <span class="pill">{{ t.manual_data_entry }}</span>
             <h1>{{ page_title }}</h1>
             <p>{{ t.hero_text }}</p>
+            <div class="actions">
+                <a class="button button-primary" href="{% url 'player-create' %}?lang={{ lang }}">Novo atleta</a>
+                {% if player %}
+                    <a class="button button-secondary" href="{% url 'player-edit' player.id %}?lang={{ lang }}">Editar atleta atual</a>
+                {% endif %}
+            </div>
         </section>
         <section class="panel">
             <div style="margin-bottom: 20px; padding: 16px 18px; border-radius: 14px; background: rgba(0, 224, 184, 0.08); border: 1px solid rgba(0, 224, 184, 0.2); color: var(--muted);">
